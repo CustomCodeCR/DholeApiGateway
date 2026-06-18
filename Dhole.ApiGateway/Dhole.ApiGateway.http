@@ -1,0 +1,6 @@
+@Dhole.ApiGateway_HostAddress = http://localhost:5216
+
+GET {{Dhole.ApiGateway_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###

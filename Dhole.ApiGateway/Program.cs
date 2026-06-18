@@ -1,0 +1,99 @@
+using System.Threading.RateLimiting;
+using CustomCodeFramework.Api.DependencyInjection;
+using CustomCodeFramework.Auth.DependencyInjection;
+using Dhole.ApiGateway.Gateway;
+using Dhole.ApiGateway.Security;
+using Microsoft.Extensions.Options;
+
+var builder = WebApplication.CreateBuilder(args);
+
+builder.Services.AddCustomCodeApiWithSwagger(title: "Dhole Api Gateway", version: "v1");
+
+builder.Services.AddCustomCodeAuth(builder.Configuration, addJwt: true, addApiKeys: false);
+
+builder
+    .Services.AddOptions<GatewayOptions>()
+    .Bind(builder.Configuration.GetSection(GatewayOptions.SectionName))
+    .Validate(options => options.Routes.Count > 0, "Gateway routes are required.")
+    .ValidateOnStart();
+
+builder
+    .Services.AddOptions<RateLimitingOptions>()
+    .Bind(builder.Configuration.GetSection(RateLimitingOptions.SectionName))
+    .Validate(
+        options => options.PermitLimit > 0,
+        "Rate limit permit limit must be greater than zero."
+    )
+    .Validate(options => options.WindowSeconds > 0, "Rate limit window must be greater than zero.")
+    .ValidateOnStart();
+
+builder.Services.AddHttpClient(
+    "gateway",
+    client =>
+    {
+        client.Timeout = TimeSpan.FromSeconds(100);
+    }
+);
+
+builder.Services.AddRateLimiter(options =>
+{
+    options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(context =>
+    {
+        var rateOptions = context
+            .RequestServices.GetRequiredService<IOptions<RateLimitingOptions>>()
+            .Value;
+
+        var key =
+            context.User.Identity?.Name
+            ?? context.Connection.RemoteIpAddress?.ToString()
+            ?? "anonymous";
+
+        return RateLimitPartition.GetFixedWindowLimiter(
+            key,
+            _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = rateOptions.PermitLimit,
+                Window = TimeSpan.FromSeconds(rateOptions.WindowSeconds),
+                QueueLimit = 0,
+                AutoReplenishment = true,
+            }
+        );
+    });
+
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+});
+
+var app = builder.Build();
+
+app.UseCustomCodeApi();
+
+if (app.Environment.IsDevelopment())
+{
+    app.MapOpenApi();
+}
+
+app.UseRateLimiter();
+
+app.UseAuthentication();
+app.UseAuthorization();
+
+app.UseMiddleware<GatewayHeaderForwardingMiddleware>();
+app.UseMiddleware<GatewayProxyMiddleware>();
+
+app.MapGet(
+        "/health",
+        () =>
+        {
+            return Results.Ok(
+                new
+                {
+                    service = "Dhole.ApiGateway",
+                    status = "Healthy",
+                    timestamp = DateTimeOffset.UtcNow,
+                }
+            );
+        }
+    )
+    .AllowAnonymous();
+
+app.Run();

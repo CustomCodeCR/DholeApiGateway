@@ -16,13 +16,11 @@ FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 ARG BUILD_CONFIGURATION=Release
 WORKDIR /src
 
-COPY ["src/Dhole.ApiGateway/Dhole.ApiGateway.csproj", "src/Dhole.ApiGateway/"]
+COPY ["Dhole.ApiGateway.csproj", "./"]
 
-RUN dotnet restore "src/Dhole.ApiGateway/Dhole.ApiGateway.csproj"
+RUN dotnet restore "Dhole.ApiGateway.csproj"
 
 COPY . .
-
-WORKDIR "/src/src/Dhole.ApiGateway"
 
 RUN dotnet build "Dhole.ApiGateway.csproj" \
   -c $BUILD_CONFIGURATION \
@@ -32,7 +30,6 @@ RUN dotnet build "Dhole.ApiGateway.csproj" \
 # Publish image
 FROM build AS publish
 ARG BUILD_CONFIGURATION=Release
-WORKDIR /src/src/Dhole.ApiGateway
 
 RUN dotnet publish "Dhole.ApiGateway.csproj" \
   -c $BUILD_CONFIGURATION \

@@ -7,9 +7,25 @@ using Microsoft.Extensions.Options;
 
 var builder = WebApplication.CreateBuilder(args);
 
+const string CorsPolicyName = "DholeWebCors";
+
 builder.Services.AddCustomCodeApiWithSwagger(title: "Dhole Api Gateway", version: "v1");
 
 builder.Services.AddCustomCodeAuth(builder.Configuration, addJwt: true, addApiKeys: false);
+
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy(
+        CorsPolicyName,
+        policy =>
+        {
+            policy
+                .WithOrigins("http://localhost:5173", "http://127.0.0.1:5173")
+                .AllowAnyHeader()
+                .AllowAnyMethod();
+        }
+    );
+});
 
 builder
     .Services.AddOptions<GatewayOptions>()
@@ -71,6 +87,8 @@ if (app.Environment.IsDevelopment())
 {
     app.MapOpenApi();
 }
+
+app.UseCors(CorsPolicyName);
 
 app.UseRateLimiter();
 

@@ -26,8 +26,9 @@ public sealed class GatewayProxyMiddleware(
     {
         var path = context.Request.Path.Value ?? string.Empty;
 
-        var route = options
-            .Value.Routes.OrderByDescending(x => x.Prefix.Length)
+        var gatewayOptions = options.Value;
+        var route = gatewayOptions
+            .Routes.OrderByDescending(x => x.Prefix.Length)
             .FirstOrDefault(x => path.StartsWith(x.Prefix, StringComparison.OrdinalIgnoreCase));
 
         if (route is null)
@@ -37,25 +38,83 @@ public sealed class GatewayProxyMiddleware(
         }
 
         var targetUri = BuildTargetUri(context, route);
+        var timeoutSeconds = route.TimeoutSeconds ?? gatewayOptions.DefaultTimeoutSeconds;
 
         logger.LogInformation(
-            "Gateway forwarding {Method} {Path} to {TargetUri}",
+            "Gateway forwarding {Method} {Path} to {TargetUri} with timeout {TimeoutSeconds}s",
             context.Request.Method,
             context.Request.Path,
-            targetUri
+            targetUri,
+            timeoutSeconds
         );
 
         using var requestMessage = CreateRequestMessage(context, targetUri);
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(
+            context.RequestAborted
+        );
+        timeout.CancelAfter(TimeSpan.FromSeconds(timeoutSeconds));
 
         var client = httpClientFactory.CreateClient("gateway");
 
-        using var responseMessage = await client.SendAsync(
-            requestMessage,
-            HttpCompletionOption.ResponseHeadersRead,
-            context.RequestAborted
-        );
+        try
+        {
+            using var responseMessage = await client.SendAsync(
+                requestMessage,
+                HttpCompletionOption.ResponseHeadersRead,
+                timeout.Token
+            );
 
-        await CopyResponseAsync(context, responseMessage);
+            await CopyResponseAsync(context, responseMessage);
+        }
+        catch (OperationCanceledException) when (!context.RequestAborted.IsCancellationRequested)
+        {
+            logger.LogWarning(
+                "Gateway timeout forwarding {Method} {Path} after {TimeoutSeconds}s",
+                context.Request.Method,
+                context.Request.Path,
+                timeoutSeconds
+            );
+
+            if (!context.Response.HasStarted)
+            {
+                context.Response.StatusCode = StatusCodes.Status504GatewayTimeout;
+                context.Response.ContentType = "application/json";
+
+                await context.Response.WriteAsJsonAsync(
+                    new
+                    {
+                        code = "Gateway.Timeout",
+                        message = $"El servicio no respondió dentro de {timeoutSeconds} segundos.",
+                        traceId = context.TraceIdentifier,
+                    },
+                    CancellationToken.None
+                );
+            }
+        }
+        catch (HttpRequestException exception)
+        {
+            logger.LogError(
+                exception,
+                "Gateway could not reach destination {TargetUri}",
+                targetUri
+            );
+
+            if (!context.Response.HasStarted)
+            {
+                context.Response.StatusCode = StatusCodes.Status502BadGateway;
+                context.Response.ContentType = "application/json";
+
+                await context.Response.WriteAsJsonAsync(
+                    new
+                    {
+                        code = "Gateway.DestinationUnavailable",
+                        message = "No fue posible comunicarse con el servicio de destino.",
+                        traceId = context.TraceIdentifier,
+                    },
+                    CancellationToken.None
+                );
+            }
+        }
     }
 
     private static string BuildTargetUri(HttpContext context, GatewayRoute route)
@@ -100,7 +159,9 @@ public sealed class GatewayProxyMiddleware(
         foreach (var header in context.Request.Headers)
         {
             if (ExcludedHeaders.Contains(header.Key.ToLowerInvariant()))
+            {
                 continue;
+            }
 
             if (!requestMessage.Headers.TryAddWithoutValidation(header.Key, header.Value.ToArray()))
             {
@@ -133,6 +194,9 @@ public sealed class GatewayProxyMiddleware(
 
         context.Response.Headers.Remove("transfer-encoding");
 
-        await responseMessage.Content.CopyToAsync(context.Response.Body, context.RequestAborted);
+        await responseMessage.Content.CopyToAsync(
+            context.Response.Body,
+            context.RequestAborted
+        );
     }
 }

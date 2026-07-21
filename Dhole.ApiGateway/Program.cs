@@ -23,7 +23,8 @@ builder.Services.AddCors(options =>
                 .WithOrigins(
                     "http://localhost:5173",
                     "http://127.0.0.1:5173",
-                    "http://192.168.1.193:5173"
+                    "http://192.168.1.193:5173",
+                    "http://192.168.1.12:5173"
                 )
                 .AllowAnyHeader()
                 .AllowAnyMethod();
@@ -35,6 +36,14 @@ builder
     .Services.AddOptions<GatewayOptions>()
     .Bind(builder.Configuration.GetSection(GatewayOptions.SectionName))
     .Validate(options => options.Routes.Count > 0, "Gateway routes are required.")
+    .Validate(
+        options => options.DefaultTimeoutSeconds > 0,
+        "Gateway default timeout must be greater than zero."
+    )
+    .Validate(
+        options => options.Routes.All(route => route.TimeoutSeconds is null or > 0),
+        "Gateway route timeouts must be greater than zero."
+    )
     .ValidateOnStart();
 
 builder
@@ -51,7 +60,10 @@ builder.Services.AddHttpClient(
     "gateway",
     client =>
     {
-        client.Timeout = TimeSpan.FromSeconds(100);
+        // Route-specific timeouts are controlled by GatewayProxyMiddleware.
+        // Disabling HttpClient.Timeout prevents the fixed 100-second timeout
+        // from cancelling long-running local AI requests.
+        client.Timeout = Timeout.InfiniteTimeSpan;
     }
 );
 

@@ -122,6 +122,20 @@ public sealed class GatewayProxyMiddleware(
         var path = context.Request.Path.Value ?? string.Empty;
         var query = context.Request.QueryString.Value ?? string.Empty;
 
+        if (route.StripPrefix && path.StartsWith(route.Prefix, StringComparison.OrdinalIgnoreCase))
+        {
+            path = path[route.Prefix.Length..];
+
+            if (string.IsNullOrWhiteSpace(path))
+            {
+                path = "/";
+            }
+            else if (!path.StartsWith('/'))
+            {
+                path = $"/{path}";
+            }
+        }
+
         return $"{route.Destination.TrimEnd('/')}{path}{query}";
     }
 

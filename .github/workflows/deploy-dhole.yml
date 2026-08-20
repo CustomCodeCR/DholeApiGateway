@@ -1,0 +1,47 @@
+name: Deploy Dhole API Gateway
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dhole-api-gateway-deploy
+  cancel-in-progress: true
+
+env:
+  COMPOSE_FILE: .dhole-system/deploy/docker-compose.services.yml
+
+jobs:
+  deploy:
+    runs-on: [self-hosted, linux, x64, dhole]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: CustomCodeCR/DholeSystem
+          ref: main
+          path: .dhole-system
+      - name: Verify server
+        run: |
+          set -euo pipefail
+          docker version
+          docker compose version
+          docker network inspect dhole >/dev/null
+          test -f /opt/dhole/.env
+          docker compose --env-file /opt/dhole/.env -f "$COMPOSE_FILE" config -q
+      - name: Build image
+        run: |
+          set -euo pipefail
+          SHA_TAG="${GITHUB_SHA::12}"
+          docker build --pull -f Dhole.ApiGateway/Dockerfile -t dhole/api-gateway:latest -t "dhole/api-gateway:$SHA_TAG" Dhole.ApiGateway
+      - name: Deploy API Gateway
+        run: |
+          set -euo pipefail
+          docker compose --env-file /opt/dhole/.env -f "$COMPOSE_FILE" up -d --no-deps --force-recreate --pull never api-gateway
+          docker compose --env-file /opt/dhole/.env -f "$COMPOSE_FILE" ps api-gateway
+      - name: Cleanup old images
+        run: docker image prune -f

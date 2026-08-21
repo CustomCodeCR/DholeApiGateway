@@ -7,6 +7,7 @@ on:
 
 permissions:
   contents: read
+  packages: read
 
 concurrency:
   group: dhole-api-gateway-deploy
@@ -36,10 +37,18 @@ jobs:
 
       - name: Build image
         shell: bash
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
           SHA_TAG="${GITHUB_SHA::12}"
-          docker build --pull -f Dhole.ApiGateway/Dockerfile -t dhole/api-gateway:latest -t "dhole/api-gateway:$SHA_TAG" Dhole.ApiGateway
+          docker build --pull \
+            --build-arg GITHUB_ACTOR="$GITHUB_ACTOR" \
+            --secret id=github_token,env=GITHUB_TOKEN \
+            -f Dhole.ApiGateway/Dockerfile \
+            -t dhole/api-gateway:latest \
+            -t "dhole/api-gateway:$SHA_TAG" \
+            .
 
       - name: Deploy API Gateway
         shell: bash

@@ -19,23 +19,66 @@ builder.Services.AddCors(options =>
         CorsPolicyName,
         policy =>
         {
-            var allowedOrigins = builder.Configuration
-                .GetSection("Cors:AllowedOrigins")
-                .Get<string[]>();
+            var allowedOrigins = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-            if (allowedOrigins is { Length: > 0 })
+            foreach (
+                var configuredOrigin in builder.Configuration
+                    .GetSection("Cors:AllowedOrigins")
+                    .Get<string[]>() ?? Array.Empty<string>()
+            )
             {
-                policy.WithOrigins(allowedOrigins).AllowAnyHeader().AllowAnyMethod();
-                return;
+                if (!string.IsNullOrWhiteSpace(configuredOrigin))
+                {
+                    allowedOrigins.Add(configuredOrigin.Trim().TrimEnd('/'));
+                }
             }
+
+            static void AddEnvironmentOrigin(HashSet<string> origins, string? value)
+            {
+                if (string.IsNullOrWhiteSpace(value))
+                {
+                    return;
+                }
+
+                var normalized = value.Trim().TrimEnd('/');
+
+                if (
+                    Uri.TryCreate(normalized, UriKind.Absolute, out var uri)
+                    && (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps)
+                )
+                {
+                    origins.Add(uri.GetLeftPart(UriPartial.Authority));
+                    return;
+                }
+
+                normalized = normalized
+                    .Replace("https://", string.Empty, StringComparison.OrdinalIgnoreCase)
+                    .Replace("http://", string.Empty, StringComparison.OrdinalIgnoreCase)
+                    .Trim('/');
+
+                if (string.IsNullOrWhiteSpace(normalized))
+                {
+                    return;
+                }
+
+                origins.Add($"https://{normalized}");
+                origins.Add($"http://{normalized}");
+            }
+
+            AddEnvironmentOrigin(allowedOrigins, builder.Configuration["DHOLE_WEB_HOST"]);
+            AddEnvironmentOrigin(allowedOrigins, builder.Configuration["VITE_FRONTEND_DOMAIN"]);
 
             if (builder.Environment.IsDevelopment())
             {
-                policy.AllowAnyOrigin().AllowAnyHeader().AllowAnyMethod();
-                return;
+                allowedOrigins.Add("http://localhost:5173");
+                allowedOrigins.Add("http://127.0.0.1:5173");
             }
 
-            policy.WithOrigins("http://localhost:5173").AllowAnyHeader().AllowAnyMethod();
+            policy
+                .WithOrigins(allowedOrigins.ToArray())
+                .AllowAnyHeader()
+                .AllowAnyMethod()
+                .AllowCredentials();
         }
     );
 });

@@ -24,6 +24,20 @@ public sealed class GatewayProxyMiddleware(
 
     public async Task InvokeAsync(HttpContext context)
     {
+        // CORS middleware runs before this proxy and applies the configured
+        // Access-Control-* headers. A preflight must never be forwarded to a
+        // downstream microservice; otherwise an unavailable destination turns
+        // a valid CORS preflight into a 502 response.
+        if (
+            HttpMethods.IsOptions(context.Request.Method)
+            && context.Request.Headers.ContainsKey("Origin")
+            && context.Request.Headers.ContainsKey("Access-Control-Request-Method")
+        )
+        {
+            context.Response.StatusCode = StatusCodes.Status204NoContent;
+            return;
+        }
+
         var path = context.Request.Path.Value ?? string.Empty;
 
         var gatewayOptions = options.Value;

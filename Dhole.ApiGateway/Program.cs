@@ -165,6 +165,10 @@ if (app.Environment.IsDevelopment())
 
 app.UseCors(CorsPolicyName);
 
+// Required before GatewayProxyMiddleware so Upgrade requests can be accepted and
+// proxied to downstream SignalR/WebSocket endpoints.
+app.UseWebSockets();
+
 app.UseRateLimiter();
 
 app.UseAuthentication();

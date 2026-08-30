@@ -1,0 +1,87 @@
+name: Deploy Dhole API Gateway - Production
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  packages: read
+
+concurrency:
+  group: dhole-api-gateway-production
+  cancel-in-progress: true
+
+env:
+  COMPOSE_FILE: ${{ github.workspace }}/.dhole-system/deploy/docker-compose.services.yml
+  DHOLE_ENV_FILE: ${{ runner.temp }}/dhole-env/.env.production
+  DHOLE_IMAGE_TAG: latest
+  DHOLE_NETWORK: dhole
+  COMPOSE_PROJECT: dhole
+
+jobs:
+  deploy:
+    runs-on: [self-hosted, linux, x64, dhole]
+
+    steps:
+      - name: Checkout service
+        uses: actions/checkout@v4
+
+      - name: Load Dhole deployment infrastructure
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf .dhole-system
+          git clone --depth 1 --branch master https://github.com/CustomCodeCR/DholeSystem.git .dhole-system
+          mkdir -p "$RUNNER_TEMP/dhole-env"
+          bash .dhole-system/deploy/prepare-environments.sh /opt/dhole/.env "$RUNNER_TEMP/dhole-env"
+
+      - name: Verify production server
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker version
+          docker compose version
+          docker network inspect "$DHOLE_NETWORK" >/dev/null
+          test -r "$DHOLE_ENV_FILE"
+          test -r "$COMPOSE_FILE"
+          docker compose --env-file "$DHOLE_ENV_FILE" -f "$COMPOSE_FILE" -p "$COMPOSE_PROJECT" config -q
+
+      - name: Build image
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          SHA_TAG="${GITHUB_SHA::12}"
+          docker build --pull \
+            --build-arg GITHUB_ACTOR="$GITHUB_ACTOR" \
+            --secret id=github_token,env=GITHUB_TOKEN \
+            -f Dhole.ApiGateway/Dockerfile \
+            -t dhole/api-gateway:latest \
+            -t "dhole/api-gateway:$SHA_TAG" \
+            .
+
+      - name: Deploy API Gateway
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker compose --env-file "$DHOLE_ENV_FILE" -f "$COMPOSE_FILE" -p "$COMPOSE_PROJECT" up -d --no-deps --force-recreate --pull never api-gateway
+          docker compose --env-file "$DHOLE_ENV_FILE" -f "$COMPOSE_FILE" -p "$COMPOSE_PROJECT" ps api-gateway
+
+      - name: Keep only master and develop branches
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --prune origin '+refs/heads/*:refs/remotes/origin/*'
+          while IFS= read -r branch; do
+            case "$branch" in
+              master|develop) continue ;;
+            esac
+            echo "Deleting obsolete branch: $branch"
+            git push origin --delete "$branch"
+          done < <(git for-each-ref --format='%(refname:strip=3)' refs/remotes/origin | grep -v '^HEAD$' || true)
+
+      - name: Cleanup old images
+        run: docker image prune -f

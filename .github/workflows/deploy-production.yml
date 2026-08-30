@@ -14,8 +14,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  COMPOSE_FILE: ${{ github.workspace }}/.dhole-system/deploy/docker-compose.services.yml
-  DHOLE_ENV_FILE: ${{ runner.temp }}/dhole-env/.env.production
+  COMPOSE_FILE: .dhole-system/deploy/docker-compose.services.yml
   DHOLE_IMAGE_TAG: latest
   DHOLE_NETWORK: dhole
   COMPOSE_PROJECT: dhole
@@ -36,6 +35,7 @@ jobs:
           git clone --depth 1 --branch master https://github.com/CustomCodeCR/DholeSystem.git .dhole-system
           mkdir -p "$RUNNER_TEMP/dhole-env"
           bash .dhole-system/deploy/prepare-environments.sh /opt/dhole/.env "$RUNNER_TEMP/dhole-env"
+          echo "DHOLE_ENV_FILE=$RUNNER_TEMP/dhole-env/.env.production" >> "$GITHUB_ENV"
 
       - name: Verify production server
         shell: bash

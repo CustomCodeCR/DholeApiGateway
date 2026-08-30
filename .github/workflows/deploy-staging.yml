@@ -14,9 +14,8 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  COMPOSE_FILE: ${{ github.workspace }}/.dhole-system/deploy/docker-compose.services.yml
-  COMPOSE_OVERRIDE: ${{ github.workspace }}/.dhole-system/deploy/docker-compose.staging.yml
-  DHOLE_ENV_FILE: ${{ runner.temp }}/dhole-env/.env.staging
+  COMPOSE_FILE: .dhole-system/deploy/docker-compose.services.yml
+  COMPOSE_OVERRIDE: .dhole-system/deploy/docker-compose.staging.yml
   DHOLE_IMAGE_TAG: staging
   DHOLE_NETWORK: dhole-staging
   COMPOSE_PROJECT: dhole-staging
@@ -37,6 +36,7 @@ jobs:
           git clone --depth 1 --branch master https://github.com/CustomCodeCR/DholeSystem.git .dhole-system
           mkdir -p "$RUNNER_TEMP/dhole-env"
           bash .dhole-system/deploy/prepare-environments.sh /opt/dhole/.env "$RUNNER_TEMP/dhole-env"
+          echo "DHOLE_ENV_FILE=$RUNNER_TEMP/dhole-env/.env.staging" >> "$GITHUB_ENV"
 
       - name: Verify staging server
         shell: bash

@@ -3,9 +3,23 @@ using CustomCodeFramework.Api.DependencyInjection;
 using CustomCodeFramework.Auth.DependencyInjection;
 using Dhole.ApiGateway.Gateway;
 using Dhole.ApiGateway.Security;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Options;
 
 var builder = WebApplication.CreateBuilder(args);
+
+var contentHttpUrl = builder.Configuration["CONTENT_HTTP_URL"]?.Trim().TrimEnd('/');
+if (!string.IsNullOrWhiteSpace(contentHttpUrl))
+{
+    builder.Configuration.AddInMemoryCollection(
+        new Dictionary<string, string?>
+        {
+            ["Gateway:Routes:10:Prefix"] = "/api/content",
+            ["Gateway:Routes:10:Destination"] = contentHttpUrl,
+            ["Gateway:HealthChecks:content"] = contentHttpUrl,
+        }
+    );
+}
 
 const string CorsPolicyName = "DholeWebCors";
 

@@ -21,6 +21,31 @@ if (!string.IsNullOrWhiteSpace(contentHttpUrl))
     );
 }
 
+var agentHttpUrl = builder.Configuration["AGENT_HTTP_URL"]?.Trim().TrimEnd('/');
+if (!string.IsNullOrWhiteSpace(agentHttpUrl))
+{
+    builder.Configuration.AddInMemoryCollection(
+        new Dictionary<string, string?>
+        {
+            ["Gateway:Routes:11:Prefix"] = "/api/agents",
+            ["Gateway:Routes:11:Destination"] = agentHttpUrl,
+            ["Gateway:Routes:11:TimeoutSeconds"] = "600",
+            ["Gateway:HealthChecks:agent"] = agentHttpUrl,
+        }
+    );
+}
+
+var hermesHttpUrl = builder.Configuration["HERMES_HTTP_URL"]?.Trim().TrimEnd('/');
+if (!string.IsNullOrWhiteSpace(hermesHttpUrl))
+{
+    builder.Configuration.AddInMemoryCollection(
+        new Dictionary<string, string?>
+        {
+            ["Gateway:HealthChecks:hermes"] = hermesHttpUrl,
+        }
+    );
+}
+
 const string CorsPolicyName = "DholeWebCors";
 
 builder.Services.AddCustomCodeApiWithSwagger(title: "Dhole Api Gateway", version: "v1");

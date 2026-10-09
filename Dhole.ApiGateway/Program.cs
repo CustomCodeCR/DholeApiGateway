@@ -173,10 +173,20 @@ builder.Services.AddRateLimiter(options =>
             .RequestServices.GetRequiredService<IOptions<RateLimitingOptions>>()
             .Value;
 
-        var key =
-            context.User.Identity?.Name
-            ?? context.Connection.RemoteIpAddress?.ToString()
-            ?? "anonymous";
+        // Only validated identities bypass the global limiter. Checking a bearer
+        // header alone would allow anonymous callers to disable throttling.
+        // Login and refresh must stay protected even if a token is present.
+        var path = context.Request.Path.Value?.TrimEnd('/') ?? string.Empty;
+        var isCredentialEndpoint =
+            path.Equals("/api/auth/login", StringComparison.OrdinalIgnoreCase)
+            || path.Equals("/api/auth/refresh", StringComparison.OrdinalIgnoreCase);
+
+        if (context.User.Identity?.IsAuthenticated == true && !isCredentialEndpoint)
+        {
+            return RateLimitPartition.GetNoLimiter("authenticated");
+        }
+
+        var key = context.Connection.RemoteIpAddress?.ToString() ?? "anonymous";
 
         return RateLimitPartition.GetFixedWindowLimiter(
             key,
@@ -208,9 +218,10 @@ app.UseCors(CorsPolicyName);
 // proxied to downstream SignalR/WebSocket endpoints.
 app.UseWebSockets();
 
-app.UseRateLimiter();
-
+// Authenticate first so rate limiting can distinguish valid JWTs from
+// unauthenticated traffic.
 app.UseAuthentication();
+app.UseRateLimiter();
 app.UseAuthorization();
 
 app.UseMiddleware<GatewayHeaderForwardingMiddleware>();

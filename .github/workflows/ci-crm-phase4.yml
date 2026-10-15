@@ -38,7 +38,7 @@ jobs:
           export Auth__Jwt__SecretKey="$(openssl rand -hex 32)"
           export ASPNETCORE_URLS=http://127.0.0.1:18981
           export Features__CrmGatewayEnabled=false
-          dotnet run --no-build -c Release --project Dhole.ApiGateway > "$RUNNER_TEMP/gateway-crm.log" 2>&1 &
+          dotnet run --no-launch-profile --no-build -c Release --project Dhole.ApiGateway > "$RUNNER_TEMP/gateway-crm.log" 2>&1 &
           pid=$!
           trap 'kill "$pid" 2>/dev/null || true' EXIT
           for i in $(seq 1 40); do

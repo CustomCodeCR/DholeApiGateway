@@ -46,6 +46,23 @@ if (!string.IsNullOrWhiteSpace(hermesHttpUrl))
     );
 }
 
+// CRM has a dedicated, non-overlapping route. Never overwrite existing indices.
+var crmDestination = builder.Configuration["CRM_HTTP_URL"]?.Trim().TrimEnd('/');
+if (!string.IsNullOrWhiteSpace(crmDestination))
+{
+    if (!Uri.TryCreate(crmDestination,UriKind.Absolute,out var crmUri) ||
+        crmUri.Scheme is not ("http" or "https") || crmUri.UserInfo.Length>0)
+        throw new InvalidOperationException("CRM_HTTP_URL is not a valid internal HTTP(S) destination.");
+    builder.Configuration.AddInMemoryCollection(new Dictionary<string,string?>
+    {
+        ["Gateway:Routes:12:Prefix"]="/api/crm",
+        ["Gateway:Routes:12:Destination"]=crmDestination,
+        ["Gateway:Routes:12:StripPrefix"]="false",
+        ["Gateway:Routes:12:TimeoutSeconds"]="30",
+        ["Gateway:HealthChecks:crm"]=crmDestination
+    });
+}
+
 const string CorsPolicyName = "DholeWebCors";
 
 builder.Services.AddCustomCodeApiWithSwagger(title: "Dhole Api Gateway", version: "v1");
@@ -224,6 +241,7 @@ app.UseAuthentication();
 app.UseRateLimiter();
 app.UseAuthorization();
 
+app.UseMiddleware<CrmRouteSecurityMiddleware>();
 app.UseMiddleware<GatewayHeaderForwardingMiddleware>();
 app.UseMiddleware<GatewayProxyMiddleware>();
 

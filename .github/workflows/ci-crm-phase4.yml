@@ -1,0 +1,68 @@
+name: API Gateway CRM Phase 4 PR Validation
+on:
+  pull_request:
+    branches: [develop, master]
+  workflow_dispatch:
+permissions:
+  contents: read
+  packages: read
+jobs:
+  build-smoke:
+    runs-on: ubuntu-latest
+    env:
+      NuGetPackageSourceCredentials_github: Username=github-actions;Password=${{ secrets.GITHUB_TOKEN }};ValidAuthenticationTypes=Basic
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Confirm existing routes unchanged and exactly one CRM route
+        run: |
+          python3 - <<'PY'
+          import json
+          d=json.load(open('Dhole.ApiGateway/appsettings.json'))
+          paths=[x['Prefix'] for x in d['Gateway']['Routes']]
+          assert paths.count('/api/crm') == 1
+          assert set(['/api/auth','/api/config','/api/pricing','/api/content','/api/notifications']).issubset(paths)
+          target=next(x for x in d['Gateway']['Routes'] if x['Prefix']=='/api/crm')
+          assert not target.get('StripPrefix',False)
+          PY
+      - name: Restore
+        run: dotnet restore Dhole.ApiGateway.slnx --configfile NuGet.Config
+      - name: Build .NET 10 Gateway
+        run: dotnet build Dhole.ApiGateway.slnx -c Release --no-restore --warnaserror
+      - name: Smoke check CRM disabled and authentication boundary
+        shell: bash
+        run: |
+          set -euo pipefail
+          export Auth__Jwt__SecretKey="$(openssl rand -hex 32)"
+          export ASPNETCORE_URLS=http://127.0.0.1:18981
+          export Features__CrmGatewayEnabled=false
+          dotnet run --no-launch-profile --no-build -c Release --project Dhole.ApiGateway > "$RUNNER_TEMP/gateway-crm.log" 2>&1 &
+          pid=$!
+          trap 'kill "$pid" 2>/dev/null || true' EXIT
+          for i in $(seq 1 40); do
+            if curl -fsS http://127.0.0.1:18981/health >/dev/null 2>&1; then break; fi
+            sleep 1
+          done
+          status="$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:18981/api/crm/accounts)"
+          test "$status" = 503
+      - name: Audit dependencies
+        run: |
+          dotnet list Dhole.ApiGateway.slnx package --vulnerable --include-transitive --format json > "$RUNNER_TEMP/gateway-audit.json"
+          python3 - "$RUNNER_TEMP/gateway-audit.json" <<'PY'
+          import json,sys
+          data=json.load(open(sys.argv[1]))
+          issues=[]
+          for project in data.get("projects",[]):
+              for framework in project.get("frameworks",[]):
+                  for group in ("topLevelPackages","transitivePackages"):
+                      for package in framework.get(group,[]):
+                          for issue in package.get("vulnerabilities",[]):
+                              issues.append((package.get("id","?"),str(issue.get("severity","?"))))
+          for name,level in issues:
+              print(f"Vulnerable package: {name} severity={level}")
+          if issues:
+              sys.exit("Dependency vulnerabilities must be addressed before merge")
+          print("No package vulnerabilities reported by NuGet audit")
+          PY

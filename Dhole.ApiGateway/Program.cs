@@ -46,6 +46,21 @@ if (!string.IsNullOrWhiteSpace(hermesHttpUrl))
     );
 }
 
+// CRM is an independently deployed service. Use the same destination for API requests and health checks.
+var crmHttpUrl = builder.Configuration["CRM_HTTP_URL"]?.Trim().TrimEnd('/');
+if (!string.IsNullOrWhiteSpace(crmHttpUrl))
+{
+    builder.Configuration.AddInMemoryCollection(
+        new Dictionary<string, string?>
+        {
+            ["Gateway:Routes:12:Prefix"] = "/api/crm",
+            ["Gateway:Routes:12:Destination"] = crmHttpUrl,
+            ["Gateway:Routes:12:StripPrefix"] = "false",
+            ["Gateway:HealthChecks:crm"] = crmHttpUrl,
+        }
+    );
+}
+
 const string CorsPolicyName = "DholeWebCors";
 
 builder.Services.AddCustomCodeApiWithSwagger(title: "Dhole Api Gateway", version: "v1");
@@ -272,7 +287,12 @@ app.MapGet(
                 return;
             }
 
-            var healthUrl = $"{destination.Value.TrimEnd('/')}/health";
+            // CRM publishes liveness and dependency readiness on distinct endpoints.
+            // Monitoring must validate readiness; a generic /health would produce a false 404.
+            var healthPath = service.Equals("crm", StringComparison.OrdinalIgnoreCase)
+                ? "/health/ready"
+                : "/health";
+            var healthUrl = $"{destination.Value.TrimEnd('/')}{healthPath}";
             var logger = loggerFactory.CreateLogger("GatewayHealthCheck");
             using var timeout = CancellationTokenSource.CreateLinkedTokenSource(context.RequestAborted);
             timeout.CancelAfter(TimeSpan.FromSeconds(options.HealthTimeoutSeconds));

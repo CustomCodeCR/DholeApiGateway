@@ -287,7 +287,12 @@ app.MapGet(
                 return;
             }
 
-            var healthUrl = $"{destination.Value.TrimEnd('/')}/health";
+            // CRM publishes liveness and dependency readiness on distinct endpoints.
+            // Monitoring must validate readiness; a generic /health would produce a false 404.
+            var healthPath = service.Equals("crm", StringComparison.OrdinalIgnoreCase)
+                ? "/health/ready"
+                : "/health";
+            var healthUrl = $"{destination.Value.TrimEnd('/')}{healthPath}";
             var logger = loggerFactory.CreateLogger("GatewayHealthCheck");
             using var timeout = CancellationTokenSource.CreateLinkedTokenSource(context.RequestAborted);
             timeout.CancelAfter(TimeSpan.FromSeconds(options.HealthTimeoutSeconds));

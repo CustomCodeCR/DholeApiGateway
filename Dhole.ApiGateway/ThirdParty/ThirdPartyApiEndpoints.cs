@@ -438,6 +438,15 @@ public static class ThirdPartyApiEndpoints
             return "Seleccioná los campos disponibles para esta operación.";
         if (allowedInputs.Any(x => x.Required && !d.Inputs.Any(f => f.Public == x.Public && f.Internal == x.Internal && f.Required)))
             return "Faltan campos obligatorios de la operación.";
+        if (target.Code == "pricing-rate-request-create")
+        {
+            var wholePayload = d.Inputs.Any(f => f.Internal == "payload");
+            var nestedPayload = d.Inputs.Any(f => f.Internal.StartsWith("payload.", StringComparison.Ordinal));
+            if (!wholePayload && !nestedPayload)
+                return "Seleccioná los datos de la solicitud o el payload completo.";
+            if (wholePayload && nestedPayload)
+                return "Elegí payload completo o campos individuales, no ambos.";
+        }
         if (d.Outputs.Count > 256 || d.Inputs.Count > 256 || (target.Method == "GET" && d.Outputs.Count < 1))
             return "Elegí al menos un campo de respuesta para GET y hasta 256 campos por sección.";
         if (d.Outputs.Concat(d.Inputs).Any(f => !Field.IsMatch(f.Public) || !Source.IsMatch(f.Internal)))
@@ -470,7 +479,7 @@ public static class ThirdPartyApiEndpoints
                 NestedInputFields = ThirdPartyFieldCatalog.Inputs(t.Code)
                     .Where(field => field.Type is "lista" or "JSON")
                     .ToDictionary(field => field.Public,
-                        field => ThirdPartyFieldCatalog.NestedInputFields(field.Internal))
+                        field => ThirdPartyFieldCatalog.NestedInputFieldsForTarget(t.Code, field.Internal))
             })
             .ToList();
     }

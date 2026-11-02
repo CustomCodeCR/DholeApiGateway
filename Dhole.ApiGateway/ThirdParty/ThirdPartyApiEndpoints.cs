@@ -257,11 +257,18 @@ public static class ThirdPartyApiEndpoints
                     var query = new List<string>();
                     foreach (var field in definition.Inputs)
                     {
-                        var value = ctx.Request.Query[field.Public].ToString();
-                        if (field.Required && string.IsNullOrWhiteSpace(value))
+                        var values = ctx.Request.Query[field.Public];
+                        if (field.Required && values.All(string.IsNullOrWhiteSpace))
                             return Results.BadRequest(new { message = "Falta el parámetro " + field.Public });
-                        if (value.Length > 2048) return Results.BadRequest();
-                        if (value.Length > 0) query.Add(Uri.EscapeDataString(field.Internal) + "=" + Uri.EscapeDataString(value));
+                        // Multi-select filters (statuses, carrierIds, polIds, etc.) are
+                        // forwarded as repeated query parameters, not comma-separated text.
+                        if (values.Count > 100) return Results.BadRequest(new { message = "Demasiados valores de filtro." });
+                        foreach (var value in values)
+                        {
+                            if (string.IsNullOrWhiteSpace(value)) continue;
+                            if (value.Length > 2048) return Results.BadRequest();
+                            query.Add(Uri.EscapeDataString(field.Internal) + "=" + Uri.EscapeDataString(value));
+                        }
                     }
                     if (ctx.Request.Query.Keys.Any(k => !definition.Inputs.Any(f => f.Public == k)))
                         return Results.BadRequest(new { message = "Parámetro no publicado." });

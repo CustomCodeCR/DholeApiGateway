@@ -385,7 +385,7 @@ public static class ThirdPartyApiEndpoints
             return "Nombre o identificador de API inválido.";
         var target = Targets(cfg).FirstOrDefault(t => t.Code == d.Target);
         if (target is null) return "Seleccioná un endpoint interno aprobado.";
-        if (d.Outputs.Count is < 1 or > 64 || d.Inputs.Count > 64)
+        if (d.Outputs.Count > 64 || d.Inputs.Count > 64 || (target.Method == "GET" && d.Outputs.Count < 1))
             return "Elegí entre 1 y 64 campos de respuesta y máximo 64 entradas.";
         if (d.Outputs.Concat(d.Inputs).Any(f => !Field.IsMatch(f.Public) || !Source.IsMatch(f.Internal)))
             return "Los nombres de los campos deben ser identificadores válidos.";

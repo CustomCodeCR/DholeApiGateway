@@ -268,7 +268,7 @@ public static class ThirdPartyApiEndpoints
                 {
                     JsonObject? input;
                     try { input = await ctx.Request.ReadFromJsonAsync<JsonObject>(cancellationToken: ct); }
-                    catch (Exception ex) when (ex is JsonException or BadHttpRequestException)
+                    catch (Exception ex) when (ex is JsonException or BadHttpRequestException or InvalidOperationException)
                     { return Results.BadRequest(new { message = "JSON inválido." }); }
                     if (input is null || input.Any(kv => !definition.Inputs.Any(f => f.Public == kv.Key)))
                         return Results.BadRequest(new { message = "El cuerpo tiene campos no publicados." });
@@ -393,8 +393,8 @@ public static class ThirdPartyApiEndpoints
         return (cfg.GetSection("ThirdParty:Targets").Get<List<ApprovedTarget>>() ?? [])
             .Where(t => SupportedMethods.Contains(t.Method) &&
                         t.Path.StartsWith("/api/" + t.Service + "/", StringComparison.OrdinalIgnoreCase) &&
-                        !t.Path.Contains('?', StringComparison.Ordinal) &&
-                        !t.Path.Contains('#', StringComparison.Ordinal) &&
+                        !t.Path.Contains('?') &&
+                        !t.Path.Contains('#') &&
                         !t.Path.Contains("..", StringComparison.Ordinal) &&
                         !t.Path.Contains("//", StringComparison.Ordinal) &&
                         Regex.IsMatch(t.Path, "^/api/[a-z-]+/[a-zA-Z0-9_/{}/.-]+$") &&

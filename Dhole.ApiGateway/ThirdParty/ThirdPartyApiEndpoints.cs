@@ -20,7 +20,12 @@ public sealed record PublishedEndpoint(
     Guid Id, string Name, string Slug, string Target,
     List<PublishedField> Inputs, List<PublishedField> Outputs,
     string? ResponseRoot, bool Enabled);
-public sealed record ApprovedTarget(string Code, string Service, string Method, string Path, string Description);
+public sealed record ApprovedTarget(string Code, string Service, string Method, string Path, string Description)
+{
+    // Only indicates whether an internal service credential was configured;
+    // does not attest to its validity or to tenant-level authorization.
+    public bool Ready { get; init; }
+}
 public sealed record IssueKeyRequest(string Label, int ExpiresInDays = 90, int MaxRequestsPerMinute = 30);
 
 public static class ThirdPartyApiEndpoints
@@ -234,6 +239,14 @@ public static class ThirdPartyApiEndpoints
                 var outgoing = new HttpRequestMessage(new HttpMethod(target.Method), uri);
                 outgoing.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", serviceCredential);
                 outgoing.Headers.TryAddWithoutValidation("X-Correlation-Id", ctx.TraceIdentifier);
+                // Preserve external request idempotency for Pricing operations.
+                if (target.Method == "POST")
+                {
+                    var idempotencyKey = ctx.Request.Headers["Idempotency-Key"].ToString();
+                    if (idempotencyKey.Length is < 8 or > 128 || idempotencyKey.Any(char.IsControl))
+                        return Results.BadRequest(new { message = "POST requiere Idempotency-Key (8 a 128 caracteres)." });
+                    outgoing.Headers.TryAddWithoutValidation("Idempotency-Key", idempotencyKey);
+                }
 
                 if (target.Method == "GET")
                 {
@@ -363,6 +376,8 @@ public static class ThirdPartyApiEndpoints
             return "Nombre o identificador de API inválido.";
         var target = Targets(cfg).FirstOrDefault(t => t.Code == d.Target);
         if (target is null) return "Seleccioná un endpoint interno aprobado.";
+        if (d.Enabled && string.IsNullOrWhiteSpace(cfg["ThirdParty:ServiceTokens:" + target.Code]))
+            return "Configurá la identidad técnica de esta operación antes de publicarla.";
         if (d.Outputs.Count > 64 || d.Inputs.Count > 64 || (target.Method == "GET" && d.Outputs.Count < 1))
             return "Elegí entre 1 y 64 campos de respuesta y máximo 64 entradas.";
         if (d.Outputs.Concat(d.Inputs).Any(f => !Field.IsMatch(f.Public) || !Source.IsMatch(f.Internal)))
@@ -388,6 +403,7 @@ public static class ThirdPartyApiEndpoints
                         Regex.IsMatch(t.Path, "^/api/[a-z-]+/[a-zA-Z0-9_/{}/.-]+$") &&
                         (t.Path.IndexOf('{') < 0 ||
                          t.Path.EndsWith("/{id}", StringComparison.Ordinal)))
+            .Select(t => t with { Ready = !string.IsNullOrWhiteSpace(cfg["ThirdParty:ServiceTokens:" + t.Code]) })
             .ToList();
     }
 

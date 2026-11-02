@@ -453,6 +453,7 @@ public static class ThirdPartyFieldCatalog
             new("lastModifiedByDisplayName", "lastModifiedByDisplayName", "Last Modified By Display Name", false, false) { Type = "texto", Group = "Datos de tarifa" },
             new("finalBackupStorageIds", "finalBackupStorageIds", "Final Backup Storage Ids", false, false) { Type = "lista", Group = "Datos de tarifa" },
             new("pickupLocations", "pickupLocations", "Puntos de recolección", false, false) { Type = "lista", Group = "Estructuras" },
+            new("transitDays", "transitDays", "Días de tránsito", false, false) { Type = "número", Group = "Datos de tarifa" },
             new("totalTaxUsd", "totalTaxUsd", "Total Tax Usd", false, false) { Type = "número", Group = "Datos de tarifa" },
             new("totalTaxCrc", "totalTaxCrc", "Total Tax Crc", false, false) { Type = "número", Group = "Datos de tarifa" },
             new("totalSaleWithTaxUsd", "totalSaleWithTaxUsd", "Total Sale With Tax Usd", false, false) { Type = "número", Group = "Datos de tarifa" },

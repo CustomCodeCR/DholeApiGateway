@@ -305,6 +305,33 @@ public static class ThirdPartyApiEndpoints
                         try { parsed = JsonNode.Parse(raw); }
                         catch (JsonException) { return Results.Problem("Respuesta no JSON del servicio interno.", statusCode: 502); }
                         var data = GetNode(parsed, definition.ResponseRoot);
+                        // Pricing uses ApiResponse<T> for details, rate creation and exchange rates.
+                        // A plain null ResponseRoot on older contracts should still unwrap them.
+                        if (string.IsNullOrWhiteSpace(definition.ResponseRoot) &&
+                            target.Code is "pricing-rate-detail" or "pricing-rate-create" or
+                                "pricing-usd-crc" or "pricing-rate-exchange-eur-usd")
+                            data = GetNode(parsed, "data") ?? parsed;
+
+                        // The rate list has a pagination envelope; field selectors refer to
+                        // properties on each RateDto, not the page wrapper. Preserve only
+                        // pagination metadata, and project every row by the configured fields.
+                        if (target.Code == "pricing-rates-list")
+                        {
+                            var page = GetNode(data, "data") ?? data;
+                            var items = GetNode(page, "items") as JsonArray;
+                            if (items is null)
+                                return Results.Problem("Formato de lista paginada inesperado.", statusCode: 502);
+                            var output = new JsonObject
+                            {
+                                ["items"] = new JsonArray(items.Select(row =>
+                                    (JsonNode?)Project(row, definition.Outputs)).ToArray()),
+                            };
+                            foreach (var key in new[] { "totalCount", "pageNumber", "pageSize", "totalPages" })
+                                if (GetNode(page, key) is { } metadata)
+                                    output[key] = metadata.DeepClone();
+                            return Results.Json(output, statusCode: status);
+                        }
+
                         JsonNode projected = data is JsonArray array
                             ? new JsonArray(array.Select(row => (JsonNode?)Project(row, definition.Outputs)).ToArray())
                             : Project(data, definition.Outputs);
@@ -345,7 +372,15 @@ public static class ThirdPartyApiEndpoints
     {
         if (string.IsNullOrWhiteSpace(path)) return node;
         foreach (var segment in path.Split('.'))
-            node = node is JsonObject obj ? obj[segment] : null;
+        {
+            if (node is JsonObject obj)
+                node = obj[segment];
+            else if (node is JsonArray array)
+                node = new JsonArray(array.Select(item =>
+                    item is JsonObject child ? child[segment]?.DeepClone() : null).ToArray());
+            else
+                return null;
+        }
         return node;
     }
 
@@ -394,8 +429,8 @@ public static class ThirdPartyApiEndpoints
             return "Seleccioná los campos disponibles para esta operación.";
         if (allowedInputs.Any(x => x.Required && !d.Inputs.Any(f => f.Public == x.Public && f.Internal == x.Internal && f.Required)))
             return "Faltan campos obligatorios de la operación.";
-        if (d.Outputs.Count > 64 || d.Inputs.Count > 64 || (target.Method == "GET" && d.Outputs.Count < 1))
-            return "Elegí entre 1 y 64 campos de respuesta y máximo 64 entradas.";
+        if (d.Outputs.Count > 256 || d.Inputs.Count > 256 || (target.Method == "GET" && d.Outputs.Count < 1))
+            return "Elegí al menos un campo de respuesta para GET y hasta 256 campos por sección.";
         if (d.Outputs.Concat(d.Inputs).Any(f => !Field.IsMatch(f.Public) || !Source.IsMatch(f.Internal)))
             return "Los nombres de los campos deben ser identificadores válidos.";
         if (d.Inputs.Select(f => f.Public).Distinct(StringComparer.Ordinal).Count() != d.Inputs.Count ||

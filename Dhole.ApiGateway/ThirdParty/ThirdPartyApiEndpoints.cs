@@ -31,6 +31,8 @@ public static class ThirdPartyApiEndpoints
     private static readonly Regex Source = new("^[a-zA-Z][a-zA-Z0-9_.]{0,159}$", RegexOptions.Compiled);
     private static readonly Regex Identifier = new("^[a-zA-Z0-9_.-]{1,128}$", RegexOptions.Compiled);
     private static readonly string[] SupportedMethods = ["GET", "POST", "PUT", "DELETE"];
+    private static readonly HashSet<string> PublicServices = new(StringComparer.OrdinalIgnoreCase)
+        { "pricing", "crm", "config", "reports", "srm", "operations" };
 
     public static async Task EnsureSchemaAsync(IConfiguration cfg, CancellationToken ct = default)
     {
@@ -106,13 +108,20 @@ public static class ThirdPartyApiEndpoints
             var error = Validate(definition, cfg);
             if (error is not null) return Results.BadRequest(new { message = error });
             await using var db = await Open(cfg, ctx.RequestAborted);
-            // Disabling a definition always revokes runtime access to its existing keys.
+            // Every contract change invalidates old keys, preventing privilege expansion.
+            await using var tx = await db.BeginTransactionAsync(ctx.RequestAborted);
             await using var cmd = new NpgsqlCommand(
-                "update integrations.public_endpoints set slug=@slug,document=@doc,enabled=@enabled,updated_at=now() where id=@id", db);
+                "update integrations.public_endpoints set slug=@slug,document=@doc,enabled=@enabled,updated_at=now() where id=@id", db, tx);
             AddDefinitionParams(cmd, definition);
             cmd.Parameters.AddWithValue("enabled", definition.Enabled);
-            return await cmd.ExecuteNonQueryAsync(ctx.RequestAborted) == 0
-                ? Results.NotFound() : Results.Ok(definition);
+            if (await cmd.ExecuteNonQueryAsync(ctx.RequestAborted) == 0)
+                return Results.NotFound();
+            await using var revoke = new NpgsqlCommand(
+                "update integrations.public_keys set active=false where endpoint_id=@id and active=true", db, tx);
+            revoke.Parameters.AddWithValue("id", id);
+            await revoke.ExecuteNonQueryAsync(ctx.RequestAborted);
+            await tx.CommitAsync(ctx.RequestAborted);
+            return Results.Ok(definition);
         });
 
         admin.MapGet("/endpoints/{id:guid}/keys", async (HttpContext ctx, IConfiguration cfg, Guid id) =>
@@ -392,6 +401,7 @@ public static class ThirdPartyApiEndpoints
     {
         return (cfg.GetSection("ThirdParty:Targets").Get<List<ApprovedTarget>>() ?? [])
             .Where(t => SupportedMethods.Contains(t.Method) &&
+                        PublicServices.Contains(t.Service) &&
                         t.Path.StartsWith("/api/" + t.Service + "/", StringComparison.OrdinalIgnoreCase) &&
                         !t.Path.Contains('?') &&
                         !t.Path.Contains('#') &&

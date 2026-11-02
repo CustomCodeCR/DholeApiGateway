@@ -352,7 +352,12 @@ public static class ThirdPartyApiEndpoints
         var result = new JsonObject();
         foreach (var field in fields)
         {
-            var node = GetNode(source, field.Internal);
+            // A few approved Pricing operations return a JSON scalar (for example,
+            // requesting a tariff returns a GUID). Allow mapping that single value
+            // explicitly as "value" without revealing any other upstream fields.
+            var node = source is JsonValue && field.Internal == "value"
+                ? source
+                : GetNode(source, field.Internal);
             if (node is not null) result[field.Public] = node.DeepClone();
         }
         return result;

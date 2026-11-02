@@ -89,7 +89,28 @@ public static class ThirdPartyFieldCatalog
     public static IReadOnlyList<ThirdPartyFieldOption> NestedInputFields(string field) =>
         NestedInputs.TryGetValue(field, out var fields) ? fields : [];
 
-    public static IReadOnlyList<ThirdPartyFieldOption> Inputs(string code) => code switch
+    // Either accept the complete Pricing payload as a single field, or expose
+    // selected nested properties that Gateway assembles into payload.form and
+    // the request/seller contexts. Those modes are mutually exclusive.
+    public static IReadOnlyList<ThirdPartyFieldOption> Inputs(string code)
+    {
+        var fields = BaseInputs(code);
+        if (code != "pricing-rate-request-create") return fields;
+        return fields.Select(field => field.Internal == "payload"
+                ? field with { Required = false, Selected = true }
+                : field)
+            .Concat(ThirdPartyRateRequestFormCatalog.Fields)
+            .ToArray();
+    }
+
+    public static IReadOnlyList<ThirdPartyFieldOption> NestedInputFieldsForTarget(string code, string field)
+    {
+        if (code == "pricing-rate-request-create" && field.StartsWith("payload.", StringComparison.Ordinal))
+            return ThirdPartyRateRequestFormCatalog.ArrayFields(field);
+        return NestedInputFields(field);
+    }
+
+    private static IReadOnlyList<ThirdPartyFieldOption> BaseInputs(string code) => code switch
     {
         "pricing-rate-request-create" =>
         [

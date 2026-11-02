@@ -281,14 +281,23 @@ public static class ThirdPartyApiEndpoints
                     try { input = await ctx.Request.ReadFromJsonAsync<JsonObject>(cancellationToken: ct); }
                     catch (Exception ex) when (ex is JsonException or BadHttpRequestException or InvalidOperationException)
                     { return Results.BadRequest(new { message = "JSON inválido." }); }
-                    if (input is null || input.Any(kv => !definition.Inputs.Any(f => f.Public == kv.Key)))
-                        return Results.BadRequest(new { message = "El cuerpo tiene campos no publicados." });
+                    if (input is null || !ValidIncomingFields(input, definition.Inputs))
+                        return Results.BadRequest(new { message = "El cuerpo contiene campos no publicados." });
                     var body = new JsonObject();
                     foreach (var field in definition.Inputs)
                     {
-                        if (field.Required && (!input.ContainsKey(field.Public) || input[field.Public] is null))
+                        var flatProvided = input.TryGetPropertyValue(field.Public, out var flat);
+                        // Accept either the easy external flat field name or the original
+                        // nested JSON structure from Pricing (but never both for one field).
+                        var nested = field.Internal != field.Public
+                            ? GetNode(input, field.Internal)
+                            : null;
+                        if (flatProvided && nested is not null)
+                            return Results.BadRequest(new { message = "Campo duplicado: " + field.Public });
+                        var value = flatProvided ? flat : nested;
+                        if (field.Required && value is null)
                             return Results.BadRequest(new { message = "Falta " + field.Public });
-                        if (input.TryGetPropertyValue(field.Public, out var value) && value is not null)
+                        if (value is not null)
                             SetNode(body, field.Internal, value.DeepClone());
                     }
                     outgoing.Content = new StringContent(body.ToJsonString(), Encoding.UTF8, "application/json");
@@ -407,6 +416,24 @@ public static class ThirdPartyApiEndpoints
             if (node is not null) result[field.Public] = node.DeepClone();
         }
         return result;
+    }
+
+    private static bool ValidIncomingFields(JsonObject input, IEnumerable<PublishedField> fields)
+    {
+        var mappings = fields.ToArray();
+        var names = mappings.Select(f => f.Public).ToHashSet(StringComparer.Ordinal);
+        var paths = mappings.Select(f => f.Internal).ToHashSet(StringComparer.Ordinal);
+
+        bool IsAllowed(string path, JsonNode? node)
+        {
+            if (paths.Contains(path)) return true;
+            if (node is JsonObject nested)
+                return nested.All(entry => IsAllowed(path + "." + entry.Key, entry.Value));
+            // Arrays and scalar values must be selected explicitly.
+            return false;
+        }
+
+        return input.All(entry => names.Contains(entry.Key) || IsAllowed(entry.Key, entry.Value));
     }
 
     private static void SetNode(JsonObject target, string path, JsonNode value)

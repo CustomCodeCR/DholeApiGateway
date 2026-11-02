@@ -360,8 +360,16 @@ app.MapGet(
 // Third-party integration is opt-in. The backing database is separate from service data.
 if (app.Configuration.GetValue<bool>("ThirdParty:Enabled"))
 {
-    await ThirdPartyApiEndpoints.EnsureSchemaAsync(app.Configuration);
-    app.MapThirdPartyEndpoints();
+    try
+    {
+        await ThirdPartyApiEndpoints.EnsureSchemaAsync(app.Configuration);
+        app.MapThirdPartyEndpoints();
+    }
+    catch (Exception exception)
+    {
+        // Failure of an optional integration must never bring down Dhole's core Gateway.
+        app.Logger.LogError(exception, "Third-party API module unavailable; Gateway continues serving core routes.");
+    }
 }
 
 app.Run();

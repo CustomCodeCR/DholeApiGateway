@@ -8,6 +8,7 @@
 
   <ItemGroup>
     <PackageReference Include="Npgsql" Version="10.0.0" />
+    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.3" />
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.8" />
     <PackageReference Include="CustomCodeFramework.Api" Version="0.2.0" />
     <PackageReference Include="CustomCodeFramework.Auth" Version="0.2.0" />

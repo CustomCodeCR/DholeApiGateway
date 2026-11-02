@@ -27,6 +27,8 @@ public sealed record ApprovedTarget(string Code, string Service, string Method, 
     public bool Ready { get; init; }
     public IReadOnlyList<ThirdPartyFieldOption> InputFields { get; init; } = [];
     public IReadOnlyList<ThirdPartyFieldOption> OutputFields { get; init; } = [];
+    public IReadOnlyDictionary<string, IReadOnlyList<ThirdPartyFieldOption>> NestedInputFields { get; init; }
+        = new Dictionary<string, IReadOnlyList<ThirdPartyFieldOption>>();
 }
 public sealed record IssueKeyRequest(string Label, int ExpiresInDays = 90, int MaxRequestsPerMinute = 30);
 
@@ -457,7 +459,11 @@ public static class ThirdPartyApiEndpoints
             .Select(t => t with {
                 Ready = !string.IsNullOrWhiteSpace(cfg["ThirdParty:ServiceTokens:" + t.Code]),
                 InputFields = ThirdPartyFieldCatalog.Inputs(t.Code),
-                OutputFields = ThirdPartyFieldCatalog.Outputs(t.Code)
+                OutputFields = ThirdPartyFieldCatalog.Outputs(t.Code),
+                NestedInputFields = ThirdPartyFieldCatalog.Inputs(t.Code)
+                    .Where(field => field.Type is "lista" or "JSON")
+                    .ToDictionary(field => field.Public,
+                        field => ThirdPartyFieldCatalog.NestedInputFields(field.Internal))
             })
             .ToList();
     }

@@ -27,7 +27,7 @@ public sealed record ApprovedTarget(string Code, string Service, string Method, 
     public bool Ready { get; init; }
     public IReadOnlyList<ThirdPartyFieldOption> InputFields { get; init; } = [];
     public IReadOnlyList<ThirdPartyFieldOption> OutputFields { get; init; } = [];
-
+}
 public sealed record IssueKeyRequest(string Label, int ExpiresInDays = 90, int MaxRequestsPerMinute = 30);
 
 public static class ThirdPartyApiEndpoints
@@ -93,7 +93,7 @@ public static class ThirdPartyApiEndpoints
             var error = Validate(definition, cfg);
             if (error is not null) return Results.BadRequest(new { message = error });
             await using var db = await Open(cfg, ctx.RequestAborted);
-            // Every contract change invalidates old keys, preventing privilege expansion.
+            // Treat edits as a new contract: old keys must not silently gain new capabilities.
             await using var tx = await db.BeginTransactionAsync(ctx.RequestAborted);
             await using var cmd = new NpgsqlCommand(
                 "update integrations.public_endpoints set slug=@slug,document=@doc,enabled=@enabled,updated_at=now() where id=@id", db, tx);
@@ -385,6 +385,8 @@ public static class ThirdPartyApiEndpoints
         if (target is null) return "Seleccioná un endpoint interno aprobado.";
         if (d.Enabled && string.IsNullOrWhiteSpace(cfg["ThirdParty:ServiceTokens:" + target.Code]))
             return "Configurá la identidad técnica de esta operación antes de publicarla.";
+        // A contract can only expose or accept documented fields for its operation.
+        // The client UI uses this exact catalogue for all selector choices.
         var allowedInputs = ThirdPartyFieldCatalog.Inputs(target.Code);
         var allowedOutputs = ThirdPartyFieldCatalog.Outputs(target.Code);
         if (d.Inputs.Any(f => !allowedInputs.Any(x => x.Public == f.Public && x.Internal == f.Internal && (!x.Required || f.Required))) ||

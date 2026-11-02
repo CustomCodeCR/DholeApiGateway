@@ -25,6 +25,8 @@ public sealed record ApprovedTarget(string Code, string Service, string Method, 
     // Only indicates whether an internal service credential was configured;
     // does not attest to its validity or to tenant-level authorization.
     public bool Ready { get; init; }
+    public IReadOnlyList<ThirdPartyFieldOption> InputFields { get; init; } = [];
+    public IReadOnlyList<ThirdPartyFieldOption> OutputFields { get; init; } = [];
 }
 public sealed record IssueKeyRequest(string Label, int ExpiresInDays = 90, int MaxRequestsPerMinute = 30);
 
@@ -383,6 +385,15 @@ public static class ThirdPartyApiEndpoints
         if (target is null) return "Seleccioná un endpoint interno aprobado.";
         if (d.Enabled && string.IsNullOrWhiteSpace(cfg["ThirdParty:ServiceTokens:" + target.Code]))
             return "Configurá la identidad técnica de esta operación antes de publicarla.";
+        // A contract can only expose or accept documented fields for its operation.
+        // The client UI uses this exact catalogue for all selector choices.
+        var allowedInputs = ThirdPartyFieldCatalog.Inputs(target.Code);
+        var allowedOutputs = ThirdPartyFieldCatalog.Outputs(target.Code);
+        if (d.Inputs.Any(f => !allowedInputs.Any(x => x.Public == f.Public && x.Internal == f.Internal && (!x.Required || f.Required))) ||
+            d.Outputs.Any(f => !allowedOutputs.Any(x => x.Public == f.Public && x.Internal == f.Internal)))
+            return "Seleccioná los campos disponibles para esta operación.";
+        if (allowedInputs.Any(x => x.Required && !d.Inputs.Any(f => f.Public == x.Public && f.Internal == x.Internal && f.Required)))
+            return "Faltan campos obligatorios de la operación.";
         if (d.Outputs.Count > 64 || d.Inputs.Count > 64 || (target.Method == "GET" && d.Outputs.Count < 1))
             return "Elegí entre 1 y 64 campos de respuesta y máximo 64 entradas.";
         if (d.Outputs.Concat(d.Inputs).Any(f => !Field.IsMatch(f.Public) || !Source.IsMatch(f.Internal)))
@@ -408,7 +419,11 @@ public static class ThirdPartyApiEndpoints
                         Regex.IsMatch(t.Path, "^/api/[a-z-]+/[a-zA-Z0-9_/{}/.-]+$") &&
                         (t.Path.IndexOf('{') < 0 ||
                          t.Path.EndsWith("/{id}", StringComparison.Ordinal)))
-            .Select(t => t with { Ready = !string.IsNullOrWhiteSpace(cfg["ThirdParty:ServiceTokens:" + t.Code]) })
+            .Select(t => t with {
+                Ready = !string.IsNullOrWhiteSpace(cfg["ThirdParty:ServiceTokens:" + t.Code]),
+                InputFields = ThirdPartyFieldCatalog.Inputs(t.Code),
+                OutputFields = ThirdPartyFieldCatalog.Outputs(t.Code)
+            })
             .ToList();
     }
 

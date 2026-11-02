@@ -4,6 +4,7 @@ using CustomCodeFramework.Auth.DependencyInjection;
 using Dhole.ApiGateway.Gateway;
 using Dhole.ApiGateway.Security;
 using Dhole.ApiGateway.ThirdParty;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Options;
 
@@ -67,6 +68,20 @@ const string CorsPolicyName = "DholeWebCors";
 builder.Services.AddCustomCodeApiWithSwagger(title: "Dhole Api Gateway", version: "v1");
 
 builder.Services.AddCustomCodeAuth(builder.Configuration, addJwt: true, addApiKeys: false);
+
+// EF Core migrations create the integration database (when PostgreSQL permits it)
+// and apply versioned schema changes on startup. The module remains opt-in.
+if (builder.Configuration.GetValue<bool>("ThirdParty:Enabled"))
+{
+    builder.Services.AddDbContext<ThirdPartyDbContext>(options =>
+    {
+        var connection = builder.Configuration["ThirdParty:ConnectionString"];
+        if (string.IsNullOrWhiteSpace(connection))
+            throw new InvalidOperationException("ThirdParty:ConnectionString no configurada.");
+        options.UseNpgsql(connection);
+    });
+}
+
 
 builder.Services.AddCors(options =>
 {
@@ -361,7 +376,7 @@ if (app.Configuration.GetValue<bool>("ThirdParty:Enabled"))
 {
     try
     {
-        await ThirdPartyApiEndpoints.EnsureSchemaAsync(app.Configuration);
+        await ThirdPartyApiEndpoints.MigrateStorageAsync(app.Services);
         app.MapThirdPartyEndpoints();
     }
     catch (Exception exception)

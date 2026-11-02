@@ -303,7 +303,7 @@ public static class ThirdPartyApiEndpoints
                         try { parsed = JsonNode.Parse(raw); }
                         catch (JsonException) { return Results.Problem("Respuesta no JSON del servicio interno.", statusCode: 502); }
                         var data = GetNode(parsed, definition.ResponseRoot);
-                        var projected = data is JsonArray array
+                        JsonNode projected = data is JsonArray array
                             ? new JsonArray(array.Select(row => (JsonNode?)Project(row, definition.Outputs)).ToArray())
                             : Project(data, definition.Outputs);
                         return Results.Json(projected, statusCode: status);

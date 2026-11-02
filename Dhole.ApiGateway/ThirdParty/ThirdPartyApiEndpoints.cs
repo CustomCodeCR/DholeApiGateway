@@ -34,37 +34,14 @@ public static class ThirdPartyApiEndpoints
     private static readonly HashSet<string> PublicServices = new(StringComparer.OrdinalIgnoreCase)
         { "pricing", "crm", "config", "reports", "srm", "operations" };
 
-    public static async Task EnsureSchemaAsync(IConfiguration cfg, CancellationToken ct = default)
+    public static async Task MigrateStorageAsync(IServiceProvider services, CancellationToken ct = default)
     {
-        await using var db = await Open(cfg, ct);
-        const string sql = """
-            create schema if not exists integrations;
-            create table if not exists integrations.public_endpoints (
-                id uuid primary key, slug text not null unique, document jsonb not null,
-                enabled boolean not null default false, updated_at timestamptz not null default now()
-            );
-            create table if not exists integrations.public_keys (
-                id uuid primary key, endpoint_id uuid not null references integrations.public_endpoints(id),
-                label text not null, prefix text not null, secret_hash text not null unique,
-                active boolean not null default true, expires_at timestamptz not null,
-                max_per_minute integer not null, created_at timestamptz not null default now(),
-                last_used_at timestamptz
-            );
-            create table if not exists integrations.public_usage (
-                key_id uuid not null references integrations.public_keys(id),
-                minute timestamptz not null, count integer not null,
-                primary key (key_id, minute)
-            );
-            create table if not exists integrations.public_audit (
-                id bigint generated always as identity primary key,
-                endpoint_id uuid not null, key_id uuid not null, method text not null,
-                http_status integer not null, duration_ms bigint not null,
-                created_at timestamptz not null default now()
-            );
-            create index if not exists idx_public_audit_endpoint on integrations.public_audit(endpoint_id, created_at desc);
-            """;
-        await using var cmd = new NpgsqlCommand(sql, db);
-        await cmd.ExecuteNonQueryAsync(ct);
+        await using var scope = services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<ThirdPartyDbContext>();
+        // Npgsql's EF database creator creates dhole_integrations if absent,
+        // provided the configured PostgreSQL role has CREATEDB privileges.
+        // Migrations own the schema; never mix EnsureCreated with Migrate.
+        await db.Database.MigrateAsync(ct);
     }
 
     public static void MapThirdPartyEndpoints(this WebApplication app)

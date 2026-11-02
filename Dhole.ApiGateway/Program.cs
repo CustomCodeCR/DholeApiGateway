@@ -3,6 +3,7 @@ using CustomCodeFramework.Api.DependencyInjection;
 using CustomCodeFramework.Auth.DependencyInjection;
 using Dhole.ApiGateway.Gateway;
 using Dhole.ApiGateway.Security;
+using Dhole.ApiGateway.ThirdParty;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Options;
 
@@ -168,6 +169,9 @@ builder
     )
     .Validate(options => options.WindowSeconds > 0, "Rate limit window must be greater than zero.")
     .ValidateOnStart();
+
+builder.Services.AddHttpClient("third-party-upstream", c => c.Timeout = TimeSpan.FromSeconds(30))
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false, UseCookies = false });
 
 builder.Services.AddHttpClient(
     "gateway",
@@ -352,5 +356,12 @@ app.MapGet(
         }
     )
     .AllowAnonymous();
+
+// Third-party integration is opt-in. The backing database is separate from service data.
+if (app.Configuration.GetValue<bool>("ThirdParty:Enabled"))
+{
+    await ThirdPartyApiEndpoints.EnsureSchemaAsync(app.Configuration);
+    app.MapThirdPartyEndpoints();
+}
 
 app.Run();

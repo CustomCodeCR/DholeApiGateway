@@ -148,6 +148,7 @@ builder.Services.AddCors(options =>
                 .WithOrigins(allowedOrigins.ToArray())
                 .AllowAnyHeader()
                 .AllowAnyMethod()
+                .WithExposedHeaders("X-Dhole-Version")
                 .AllowCredentials();
         }
     );
@@ -239,6 +240,17 @@ builder.Services.AddRateLimiter(options =>
 
 var app = builder.Build();
 
+// Runtime version is loaded from the deployed Gateway assembly, not source control.
+app.Use(async (context, next) =>
+{
+    if (context.Request.Path.Value?.StartsWith("/health", StringComparison.OrdinalIgnoreCase) == true
+        || context.Request.Path.Value?.StartsWith("/api/health/", StringComparison.OrdinalIgnoreCase) == true)
+    {
+        context.Response.Headers["X-Dhole-Version"] = typeof(Program).Assembly.GetName().Version?.ToString(3) ?? "unknown";
+    }
+    await next();
+});
+
 app.UseCustomCodeApi();
 
 if (app.Environment.IsDevelopment())
@@ -266,6 +278,7 @@ static object CreateGatewayHealthResponse() =>
     {
         service = "Dhole.ApiGateway",
         status = "Healthy",
+        version = typeof(Program).Assembly.GetName().Version?.ToString(3) ?? "unknown",
         timestamp = DateTimeOffset.UtcNow,
     };
 
@@ -331,6 +344,13 @@ app.MapGet(
                     response.Content.Headers.ContentType?.ToString() ?? "application/json";
                 context.Response.Headers["Cache-Control"] = "no-store, no-cache";
                 context.Response.Headers["X-Dhole-Health-Service"] = service;
+                // The upstream health response identifies the actually deployed service.
+                if (response.Headers.TryGetValues("X-Dhole-Version", out var versions))
+                {
+                    var reported = versions.FirstOrDefault();
+                    if (!string.IsNullOrWhiteSpace(reported))
+                        context.Response.Headers["X-Dhole-Version"] = reported;
+                }
 
                 await response.Content.CopyToAsync(context.Response.Body, context.RequestAborted);
             }

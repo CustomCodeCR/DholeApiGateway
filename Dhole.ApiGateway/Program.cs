@@ -266,10 +266,21 @@ static object CreateGatewayHealthResponse() =>
     {
         service = "Dhole.ApiGateway",
         status = "Healthy",
+        version = typeof(GatewayOptions).Assembly.GetName().Version?.ToString(3),
         timestamp = DateTimeOffset.UtcNow,
     };
 
 app.MapGet("/health", () => Results.Ok(CreateGatewayHealthResponse())).AllowAnonymous();
+
+// The registry contains declared versions. Health may supply the live version.
+app.MapGet("/api/system/versions", (IWebHostEnvironment environment) =>
+{
+    var path = Path.Combine(environment.ContentRootPath, "service-versions.json");
+    if (!File.Exists(path))
+        return Results.Problem("Version manifest unavailable.", statusCode: StatusCodes.Status503ServiceUnavailable);
+
+    return Results.Text(File.ReadAllText(path), "application/json");
+}).AllowAnonymous();
 
 app.MapGet(
         "/api/health/{service}",

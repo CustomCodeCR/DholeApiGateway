@@ -20,6 +20,8 @@ ARG GITHUB_ACTOR=github-actions
 WORKDIR /src
 
 COPY ["NuGet.Config", "./NuGet.Config"]
+# Include MSBuild release metadata before restore/build so assembly version matches version.json
+COPY ["Directory.Build.targets", "./Directory.Build.targets"]
 COPY ["Dhole.ApiGateway/Dhole.ApiGateway.csproj", "Dhole.ApiGateway/"]
 
 RUN --mount=type=secret,id=github_token,required=true \

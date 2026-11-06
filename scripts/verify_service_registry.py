@@ -15,4 +15,5 @@ assert len({s["key"] for s in manifest["services"]}) == len(manifest["services"]
 assert all(re.fullmatch(r"[0-9]+[.][0-9]+[.][0-9]+", s["version"]) for s in manifest["services"])
 assert 'app.MapGet("/api/system/versions"' in (root / "Dhole.ApiGateway/Program.cs").read_text()
 assert 'Content Update="service-versions.json"' in (root / "Dhole.ApiGateway/Dhole.ApiGateway.csproj").read_text()
+assert 'COPY ["Directory.Build.targets", "./Directory.Build.targets"]' in (root / "Dhole.ApiGateway/Dockerfile").read_text()
 print("PASS gateway registry")

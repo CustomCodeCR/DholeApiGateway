@@ -5,7 +5,8 @@
 - Introduce Hub universal WSS candidato `/hubs/realtime` y endpoint de tickets opacos `/hubs/realtime/ticket`, ambos aislados detrás de los flags generales desactivados.
 - Seguridad por recurso: los grupos los calcula exclusivamente el servidor, el propietario REST reautoriza en la suscripción y antes de cada emisión, y las notificaciones no contienen entidades completas ni datos sensibles.
 - Bridge durable Redis Streams con grupo estable por instancia, Inbox PostgreSQL, cuarentena de eventos inválidos y replay de pendientes. No sustituye el Hub existente de notificaciones.
-- Pruebas de F3 aisladas en CI, sin integración a `develop` ni `master`, sin despliegue, sin activación realtime.
+- Pruebas F3 de CI aislada: 100/100 PASS en run 42485284958 (SHA 9ec7c1a60b21450c04aebca181106cf6ea11c4ce), incluidas dos instancias TestServer Gateway contra Redis/Postgres y recuperación del cursor durable tras reinicio. No prueba WSS TLS real con Traefik de staging.
+- Sin integración a `develop` ni `master`, sin despliegue ni activación realtime.
 - El gate F3 requiere F0–F2 aprobados, WSS real por Gateway, permisos en producción/staging y topología multiinstancia verificada; todavía no se declara aprobado.
 
 

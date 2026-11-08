@@ -254,6 +254,12 @@ public sealed class RealtimeF3WebSocketIntegrationTests
             root.TryGetProperty("target", out var target) &&
             target.GetString() == "resourceChanged");
         Assert.Contains(second.ToString("D"), afterRevoke, StringComparison.OrdinalIgnoreCase);
+        // The bridge iterates subscribers asynchronously; receiving on A
+        // can precede the permission recheck/removal of revoked B.
+        var aclDeadline = DateTimeOffset.UtcNow.AddSeconds(6);
+        while (registry.GetSubscribers(new("crm.account", ResourceId)).Count != 1
+            && DateTimeOffset.UtcNow < aclDeadline)
+            await Task.Delay(25);
         Assert.Single(registry.GetSubscribers(new("crm.account", ResourceId)));
         }
         finally

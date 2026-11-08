@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.4.3] - 2026-11-08 (F9 candidato, sin despliegue)
+
+- Fija el catálogo `service-versions.json` de Gateway con versiones definitivas de los 13 microservicios y Gateway para el batch global `1.13.11`. PATCH Gateway `1.4.2` → `1.4.3` para evitar entradas obsoletas tras los últimos bumps de sincronización.
+- Sin modificación de rutas REST, SignalR, ACL ni secretos; no se han activado los flags ni fusionado la PR F9.
+
+
 ## [1.4.2] - 2026-11-08 (F9 candidato, sin despliegue)
 
 - Reconciliado `Dhole.ApiGateway/service-versions.json` con la versión global candidata `1.13.11` y el catálogo de versiones independientes de los 14 servicios (13 microservicios + Gateway), corrigiendo el fallo del check principal de versión de Gateway.

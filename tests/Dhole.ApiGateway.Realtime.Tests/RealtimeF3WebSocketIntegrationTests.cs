@@ -159,6 +159,21 @@ public sealed class RealtimeF3WebSocketIntegrationTests
                     services.AddSingleton<IRealtimeResourceAuthorizer>(access);
                 });
             });
+        // Diagnose feature registration before attempting a socket upgrade.
+        using (var warmup = application.CreateClient())
+        {
+            var cfg = application.Services.GetRequiredService<IConfiguration>();
+            Assert.True(cfg.GetValue<bool>("Features:UniversalRealtimeEnabled"),
+                "F3 TestServer must override global realtime flag at startup.");
+            Assert.True(cfg.GetValue<bool>("Realtime:Enabled"),
+                "F3 TestServer must override gateway flag at startup.");
+            Assert.True(cfg.GetValue<bool>("Realtime:BatchApproved"),
+                "F3 TestServer must explicitly simulate release approval (CI only).");
+            var routes = application.Services
+                .GetRequiredService<Microsoft.AspNetCore.Routing.EndpointDataSource>()
+                .Endpoints.Select(x => x.DisplayName ?? "").ToArray();
+            Assert.Contains(routes, r => r.Contains("/hubs/realtime/ticket", StringComparison.Ordinal));
+        }
         using var a = await ConnectAuthenticatedAsync(application, IdA);
         using var b = await ConnectAuthenticatedAsync(application, IdB);
         using var denied = await ConnectAuthenticatedAsync(application, IdDenied);

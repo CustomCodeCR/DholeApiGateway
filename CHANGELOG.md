@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.4.2] - 2026-11-08 (F9 candidato, sin despliegue)
+
+- Reconciliado `Dhole.ApiGateway/service-versions.json` con la versión global candidata `1.13.11` y el catálogo de versiones independientes de los 14 servicios (13 microservicios + Gateway), corrigiendo el fallo del check principal de versión de Gateway.
+- El Hub universal, JWT/ticket y el bridge mantienen los flags de aprobación desactivados; sin cambios de rutas REST o ACL. PATCH de Gateway `1.4.1` → `1.4.2`.
+
+
 ## [1.4.1] - 2026-11-08 (candidato F9, sin publicación)
 
 - Sincroniza metadatos de versión global del batch Dhole Realtime `rt-20261107-01` a `1.13.10`; actualización PATCH independiente de DholeApiGateway `1.4.0` → `1.4.1`. No cambia contratos REST, datos, lógica de negocio ni flags; requiere gates F0–F8 y CI de SHA final antes de merge.

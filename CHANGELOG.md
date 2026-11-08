@@ -1,5 +1,10 @@
 # Changelog
 
+## [1.4.1] - 2026-11-08 (candidato F9, sin publicación)
+
+- Sincroniza metadatos de versión global del batch Dhole Realtime `rt-20261107-01` a `1.13.10`; actualización PATCH independiente de DholeApiGateway `1.4.0` → `1.4.1`. No cambia contratos REST, datos, lógica de negocio ni flags; requiere gates F0–F8 y CI de SHA final antes de merge.
+
+
 ## [1.4.0] — 2026-11-07 (candidato F3, NO liberado)
 
 - F6.02: añade el stream Redis durable `dhole.pricing.realtime.v1` con cursor/consumer group propio y validación de audiencias `pricing.rate`, preservando el stream CRM y la reautorización REST por entrega. [CI #42492026596](https://github.com/CustomCodeCR/DholeApiGateway/actions/runs/42492026596) 106/106 PASS.

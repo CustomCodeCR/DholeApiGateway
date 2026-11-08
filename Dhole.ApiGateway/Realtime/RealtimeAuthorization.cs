@@ -11,6 +11,7 @@ public sealed class RealtimeHostOptions
     public const string Section = "Realtime";
     public bool Enabled { get; set; } = false;
     public bool BridgeEnabled { get; set; } = false;
+    public bool PricingBridgeEnabled { get; set; } = false; // F6.02 opt-in, OFF by default
     public bool BatchApproved { get; set; } = false;
     public string ReleaseId { get; set; } = "";
     public string RedisConnectionString { get; set; } = "";

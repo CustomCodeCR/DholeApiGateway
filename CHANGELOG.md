@@ -2,6 +2,8 @@
 
 ## [1.4.0] — 2026-11-07 (candidato F3, NO liberado)
 
+- F6.02: añade el stream Redis durable `dhole.pricing.realtime.v1` con cursor/consumer group propio y validación de audiencias `pricing.rate`, preservando el stream CRM y la reautorización REST por entrega. [CI #42492026596](https://github.com/CustomCodeCR/DholeApiGateway/actions/runs/42492026596) 106/106 PASS.
+- F6 de seguridad: `resourceRevoked` envía un control sin datos de negocio al cliente previamente suscrito para eliminar la vista al revocar el acceso (403/404). [CI #42492902414](https://github.com/CustomCodeCR/DholeApiGateway/actions/runs/42492902414) PASS, incluye revocación multiusuario. Gateway `1.4.0` sigue versión candidata del mismo release.
 - Introduce Hub universal WSS candidato `/hubs/realtime` y endpoint de tickets opacos `/hubs/realtime/ticket`, ambos aislados detrás de los flags generales desactivados.
 - Seguridad por recurso: los grupos los calcula exclusivamente el servidor, el propietario REST reautoriza en la suscripción y antes de cada emisión, y las notificaciones no contienen entidades completas ni datos sensibles.
 - Bridge durable Redis Streams con grupo estable por instancia, Inbox PostgreSQL, cuarentena de eventos inválidos y replay de pendientes. No sustituye el Hub existente de notificaciones.

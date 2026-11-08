@@ -261,6 +261,15 @@ public sealed class RealtimeF3WebSocketIntegrationTests
             && DateTimeOffset.UtcNow < aclDeadline)
             await Task.Delay(25);
         Assert.Single(registry.GetSubscribers(new("crm.account", ResourceId)));
+        var revokedControl = await ReceiveUntil(b, root =>
+            root.TryGetProperty("target", out var target) &&
+            target.GetString() == "resourceRevoked");
+        Assert.Contains(ResourceId.ToString("D"), revokedControl,
+            StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("resourceChanged", revokedControl,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain("clientName", revokedControl,
+            StringComparison.OrdinalIgnoreCase);
         }
         finally
         {

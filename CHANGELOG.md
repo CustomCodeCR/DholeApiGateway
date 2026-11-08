@@ -1,5 +1,10 @@
 # Changelog
 
+## [1.4.4] - 2026-11-08 (F9 candidate only)
+
+- Actualizado el registro `service-versions.json` con la versión global `1.13.12` y los 13 microservicios coordinados. PATCH Gateway 1.4.3 → 1.4.4; API REST/WS y flags sin cambios; requiere gates formales antes del release.
+
+
 ## [1.4.3] - 2026-11-08 (F9 candidato, sin despliegue)
 
 - Fija el catálogo `service-versions.json` de Gateway con versiones definitivas de los 13 microservicios y Gateway para el batch global `1.13.11`. PATCH Gateway `1.4.2` → `1.4.3` para evitar entradas obsoletas tras los últimos bumps de sincronización.

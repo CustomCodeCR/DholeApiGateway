@@ -372,10 +372,10 @@ public sealed class RealtimeF3WebSocketIntegrationTests
             var first = Guid.NewGuid();
             await Emit(first);
             await Task.WhenAll(AssertReceives(wsA, first), AssertReceives(wsB, first));
-            Assert.Equal(1, a.Services.GetRequiredService<RealtimeConnectionRegistry>()
-                .GetSubscribers(new("crm.account", ResourceId)).Count);
-            Assert.Equal(1, b.Services.GetRequiredService<RealtimeConnectionRegistry>()
-                .GetSubscribers(new("crm.account", ResourceId)).Count);
+            Assert.Single(a.Services.GetRequiredService<RealtimeConnectionRegistry>()
+                .GetSubscribers(new("crm.account", ResourceId)));
+            Assert.Single(b.Services.GetRequiredService<RealtimeConnectionRegistry>()
+                .GetSubscribers(new("crm.account", ResourceId)));
 
             // Stop the entire A host while Redis remains available. B stays up.
             a.Dispose();

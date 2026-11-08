@@ -12,6 +12,7 @@ public sealed class RealtimeHostOptions
     public bool Enabled { get; set; } = false;
     public bool BridgeEnabled { get; set; } = false;
     public bool PricingBridgeEnabled { get; set; } = false; // F6.02 opt-in, OFF by default
+    public bool UniversalServicesBridgeEnabled { get; set; } = false; // F6.04-13, OFF by default
     public bool BatchApproved { get; set; } = false;
     public string ReleaseId { get; set; } = "";
     public string RedisConnectionString { get; set; } = "";
@@ -28,12 +29,38 @@ public readonly record struct RealtimeResource(string Kind, Guid Id)
 
 public static class RealtimeResourcePolicy
 {
-    // Only backend-confirmed resources. Adding a resource requires a reviewed
-    // owner REST GET with authorization, an ADR and negative security tests.
+    // Owner REST GET (or narrowly scoped access check) MUST be reviewed,
+    // authentication required, and 401/403/404 treated as denial. No tenant or
+    // role names are ever derived from audienceRef; only allowlisted resources.
+    private static readonly IReadOnlyDictionary<string, (string Service, string Path)> Allowlist =
+        new Dictionary<string, (string Service, string Path)>(StringComparer.Ordinal)
+        {
+            ["crm.account"] = ("crm", "/api/crm/accounts/{id}"),
+            ["pricing.rate"] = ("pricing", "/api/pricing/rates/{id}"),
+            ["auth.user"] = ("auth", "/api/auth/users/{id}/realtime-access"),
+            ["config.catalog-group"] = ("config", "/api/config/catalog-groups/{id}"),
+            ["config.catalog-item"] = ("config", "/api/config/catalog-items/{id}"),
+            ["audit.event"] = ("auditlogs", "/api/auditlogs/events/{id}"),
+            ["storage.file"] = ("storage", "/api/v1/storage/files/{id}"),
+            ["extraction.execution"] = ("data-extraction", "/api/data-extraction/realtime-access/execution/{id}"),
+            ["extraction.emailjob"] = ("data-extraction", "/api/data-extraction/realtime-access/emailjob/{id}"),
+            ["extraction.airequest"] = ("data-extraction", "/api/data-extraction/realtime-access/airequest/{id}"),
+            ["reports.template"] = ("reports", "/api/reports/templates/{id}"),
+            ["dynamics.job"] = ("dynamics", "/api/admin/v1/operations/realtime/jobs/{id}"),
+            ["ai.execution"] = ("ai", "/api/ai/executions/{id}"),
+            ["ai.emailjob"] = ("ai", "/api/ai/realtime-access/emailjob/{id}"),
+            ["agent.execution"] = ("agent", "/api/agents/executions/{id}"),
+            ["agent.definition"] = ("agent", "/api/agents/definitions/{id}"),
+            ["agent.schedule"] = ("agent", "/api/agents/schedules/{id}"),
+            ["content.item"] = ("content", "/api/content/items/{id}"),
+            ["content.menu"] = ("content", "/api/content/realtime-access/menu/{id}"),
+            ["content.setting"] = ("content", "/api/content/realtime-access/setting/{id}")
+        };
+
     public static bool TryCreate(string? kind, string? rawId, out RealtimeResource resource)
     {
         resource = default;
-        if (kind is not ("crm.account" or "pricing.rate") ||
+        if (kind is null || !Allowlist.ContainsKey(kind) ||
             !Guid.TryParse(rawId, out var parsed) || parsed == Guid.Empty)
             return false;
         resource = new RealtimeResource(kind, parsed);
@@ -45,31 +72,18 @@ public static class RealtimeResourcePolicy
         resource = default;
         if (string.IsNullOrWhiteSpace(reference) || reference.Length > 160)
             return false;
-        // The producer cannot designate a SignalR group or arbitrary recipient.
         var segments = reference.Split(':');
         if (segments.Length != 3) return false;
-        string? kind = (segments[0], segments[1]) switch
-        {
-            ("crm", "account") => "crm.account",
-            ("pricing", "rate") => "pricing.rate",
-            _ => null
-        };
-        return TryCreate(kind, segments[2], out resource);
+        return TryCreate(segments[0] + "." + segments[1], segments[2], out resource);
     }
 
-    public static string? ServiceFor(string kind) => kind switch
-    {
-        "crm.account" => "crm",
-        "pricing.rate" => "pricing",
-        _ => null
-    };
+    public static string? ServiceFor(string kind) =>
+        Allowlist.TryGetValue(kind, out var owner) ? owner.Service : null;
 
-    public static string? PathFor(RealtimeResource resource) => resource.Kind switch
-    {
-        "crm.account" => $"/api/crm/accounts/{resource.Id:D}",
-        "pricing.rate" => $"/api/pricing/rates/{resource.Id:D}",
-        _ => null
-    };
+    public static string? PathFor(RealtimeResource resource) =>
+        Allowlist.TryGetValue(resource.Kind, out var owner)
+            ? owner.Path.Replace("{id}", resource.Id.ToString("D"), StringComparison.Ordinal)
+            : null;
 }
 
 /// <summary>

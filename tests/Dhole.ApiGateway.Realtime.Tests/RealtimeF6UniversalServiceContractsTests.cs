@@ -56,7 +56,7 @@ public sealed class RealtimeF6UniversalServiceContractsTests
         var route = RealtimeResourcePolicy.PathFor(allowed);
         Assert.NotNull(route);
         Assert.Contains(id.ToString("D"), route!, StringComparison.Ordinal);
-        Assert.True(route!.StartsWith("/api/", StringComparison.Ordinal));
+        Assert.StartsWith("/api/", route!, StringComparison.Ordinal);
         Assert.True(RealtimeStreamBridge.TryParseMinimal(
             Envelope(eventId, id, kind, producer), eventId,
             out var evt, out var resource, stream));

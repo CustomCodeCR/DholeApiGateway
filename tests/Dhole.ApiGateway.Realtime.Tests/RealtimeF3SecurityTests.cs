@@ -355,4 +355,35 @@ public sealed class RealtimeF3SecurityTests
         Assert.Equal(allowed, RealtimeOriginPolicy.IsAllowed(origin, configuration));
     }
 
+    [Fact]
+    public void CRM_stream_cannot_smuggle_pricing_events_into_other_audiences()
+    {
+        var eventId = Guid.NewGuid();
+        Assert.False(RealtimeStreamBridge.TryParseMinimal(
+            Envelope(eventId, PricingId, audience: $"pricing:rate:{PricingId:D}",
+                eventType: "pricing.rate.updated.v1"), eventId, out _, out _));
+    }
+
+    [Fact]
+    public void Aggregate_type_cannot_be_used_as_a_PII_carrier()
+    {
+        var eventId = Guid.NewGuid();
+        var injected = Envelope(eventId, AccountId)
+            .Replace("\"aggregateType\":\"account\"",
+                "\"aggregateType\":\"private@example.invalid\"", StringComparison.Ordinal);
+        Assert.False(RealtimeStreamBridge.TryParseMinimal(
+            injected, eventId, out _, out _));
+    }
+
+    [Fact]
+    public async Task TLS_owner_REST_destination_is_supported_and_authorized()
+    {
+        var handler = new FakeHandler(_ => new HttpResponseMessage(HttpStatusCode.OK));
+        var access = Authorizer(handler, "https://crm-internal:8443");
+        Assert.True(await access.CanReadAsync(
+            new("crm.account", AccountId), User(Guid.NewGuid()), "ci-token", default));
+        Assert.Equal($"https://crm-internal:8443/api/crm/accounts/{AccountId:D}",
+            Assert.Single(handler.Requests).RequestUri?.ToString());
+    }
+
 }

@@ -40,6 +40,7 @@ public static class RealtimeResourcePolicy
             ["auth.user"] = ("auth", "/api/auth/users/{id}/realtime-access"),
             ["config.catalog-group"] = ("config", "/api/config/catalog-groups/{id}"),
             ["config.catalog-item"] = ("config", "/api/config/catalog-items/{id}"),
+            ["srm.supplier"] = ("config", "/api/config/srm/suppliers/{id}/realtime-access"),
             ["audit.event"] = ("auditlogs", "/api/auditlogs/events/{id}"),
             ["storage.file"] = ("storage", "/api/v1/storage/files/{id}"),
             ["extraction.execution"] = ("data-extraction", "/api/data-extraction/realtime-access/execution/{id}"),

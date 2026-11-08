@@ -103,7 +103,7 @@ public sealed class RealtimeF3WebSocketIntegrationTests
         var ticket = ticketBody.RootElement.GetProperty("ticket").GetString();
         Assert.NotNull(ticket);
         var wsClient = factory.Server.CreateWebSocketClient();
-        wsClient.ConfigureRequest = msg => msg.Headers.Add("Origin", "http://localhost");
+        wsClient.ConfigureRequest = msg => msg.Headers["Origin"] = "http://localhost";
         var socket = await wsClient.ConnectAsync(
             new Uri("ws://localhost/hubs/realtime?ticket=" + ticket),
             CancellationToken.None);

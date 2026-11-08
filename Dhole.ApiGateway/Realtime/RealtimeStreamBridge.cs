@@ -28,6 +28,7 @@ public sealed class RealtimeStreamBridge(
     ILogger<RealtimeStreamBridge> logger) : BackgroundService
 {
     public const string CrmStream = "dhole.crm.realtime.v1";
+    public const string PricingStream = "dhole.pricing.realtime.v1";
     private static readonly Meter Meter = new("Dhole.ApiGateway.Realtime.Bridge", "0.1.0");
     private static readonly Counter<long> Delivered = Meter.CreateCounter<long>("realtime_gateway_delivery");
     private static readonly Counter<long> Denied = Meter.CreateCounter<long>("realtime_gateway_denied");
@@ -37,85 +38,97 @@ public sealed class RealtimeStreamBridge(
     {
         var opts = options.Value;
         if (!opts.Enabled || !opts.BridgeEnabled)
-            return; // double feature flag: no background Redis consumption
+            return;
 
+        var db = redis.GetDatabase();
+        // Independent durable cursors and consumer groups per source stream.
+        // CRM continues independently if Pricing's opt-in bridge is disabled.
+        var bridges = new List<Task> { ConsumeStreamAsync(db, CrmStream, cancellationToken) };
+        if (opts.PricingBridgeEnabled)
+            bridges.Add(ConsumeStreamAsync(db, PricingStream, cancellationToken));
+        await Task.WhenAll(bridges);
+    }
+
+    private async Task ConsumeStreamAsync(IDatabase db, string stream,
+        CancellationToken ct)
+    {
+        var opts = options.Value;
         var group = "dhole-rt-gw-v1-" + opts.InstanceId;
         var consumer = opts.InstanceId;
-        var db = redis.GetDatabase();
         try
         {
             await db.StreamCreateConsumerGroupAsync(
-                CrmStream, group, "0-0", createStream: true);
+                stream, group, "0-0", createStream: true);
         }
         catch (RedisServerException ex) when (
             ex.Message.Contains("BUSYGROUP", StringComparison.OrdinalIgnoreCase))
         {
-            // Existing cursor must never be reset.
+            // Never reset a persisted cursor on restart.
         }
 
-        while (!cancellationToken.IsCancellationRequested)
+        while (!ct.IsCancellationRequested)
         {
             try
             {
                 var entries = await db.StreamReadGroupAsync(
-                    CrmStream, group, consumer, "0-0", count: 50);
+                    stream, group, consumer, "0-0", count: 50);
                 if (entries.Length == 0)
                 {
                     var claim = await db.StreamAutoClaimAsync(
-                        CrmStream, group, consumer, 30_000,
-                        "0-0", count: 50);
+                        stream, group, consumer, 30_000, "0-0", count: 50);
                     entries = claim.ClaimedEntries;
                 }
                 if (entries.Length == 0)
                     entries = await db.StreamReadGroupAsync(
-                        CrmStream, group, consumer, ">", count: 50);
+                        stream, group, consumer, ">", count: 50);
                 if (entries.Length == 0)
                 {
-                    await Task.Delay(TimeSpan.FromSeconds(2), cancellationToken);
+                    await Task.Delay(TimeSpan.FromSeconds(2), ct);
                     continue;
                 }
                 foreach (var entry in entries)
                 {
-                    cancellationToken.ThrowIfCancellationRequested();
-                    await ProcessEntryAsync(db, group, entry, cancellationToken);
+                    ct.ThrowIfCancellationRequested();
+                    await ProcessEntryAsync(db, stream, group, entry, ct);
                 }
             }
-            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
             {
                 break;
             }
             catch (Exception exception)
             {
-                // Keep PEL unacknowledged on failure; redact raw event/token.
                 Failed.Add(1);
-                logger.LogWarning(
-                    "Realtime bridge retry after {FailureType}", exception.GetType().Name);
-                await Task.Delay(TimeSpan.FromSeconds(5), cancellationToken);
+                logger.LogWarning("Realtime bridge {Stream} retry after {FailureType}",
+                    stream, exception.GetType().Name);
+                await Task.Delay(TimeSpan.FromSeconds(5), ct);
             }
         }
     }
 
-    private async Task ProcessEntryAsync(IDatabase redisDb, string group, StreamEntry entry,
-        CancellationToken ct)
+    private async Task ProcessEntryAsync(IDatabase redisDb, string stream, string group,
+        StreamEntry entry, CancellationToken ct)
     {
         var opts = options.Value;
         var fields = entry.Values.ToDictionary(
             x => x.Name.ToString(), x => x.Value.ToString(), StringComparer.Ordinal);
         fields.TryGetValue("payload_json", out var json);
         fields.TryGetValue("event_id", out var idText);
+        if (stream == PricingStream)
+            fields.TryGetValue("header:event_id", out idText);
         if (Encoding.UTF8.GetByteCount(json ?? "") > 6000 ||
             !Guid.TryParse(idText, out var eventId) || eventId == Guid.Empty ||
-            !TryParseMinimal(json, eventId, out var invalidation, out var resource))
+            !TryParseMinimal(json, eventId, out var invalidation, out var resource, stream))
         {
             await QuarantineAsync(opts.InboxPostgresConnectionString, opts.InstanceId,
-                CrmStream, entry.Id.ToString(), "invalid_or_unmapped_envelope", ct);
-            await redisDb.StreamAcknowledgeAsync(CrmStream, group, entry.Id);
+                stream, entry.Id.ToString(), "invalid_or_unmapped_envelope", ct);
+            await redisDb.StreamAcknowledgeAsync(stream, group, entry.Id);
             return;
         }
         if (await AlreadyProcessedAsync(opts.InboxPostgresConnectionString, opts.InstanceId,
                 eventId, ct))
         {
-            await redisDb.StreamAcknowledgeAsync(CrmStream, group, entry.Id);
+            await redisDb.StreamAcknowledgeAsync(stream, group, entry.Id);
             return;
         }
 
@@ -144,12 +157,13 @@ public sealed class RealtimeStreamBridge(
         // dedupe eventId and always reconcile a version gap with REST.
         await RecordProcessedAsync(opts.InboxPostgresConnectionString,
             opts.InstanceId, eventId, ct);
-        await redisDb.StreamAcknowledgeAsync(CrmStream, group, entry.Id);
+        await redisDb.StreamAcknowledgeAsync(stream, group, entry.Id);
     }
 
     public static bool TryParseMinimal(
         string? json, Guid expectedEventId,
-        out RealtimeInvalidation invalidation, out RealtimeResource resource)
+        out RealtimeInvalidation invalidation, out RealtimeResource resource,
+        string stream = CrmStream)
     {
         invalidation = default!;
         resource = default;
@@ -188,13 +202,20 @@ public sealed class RealtimeStreamBridge(
                 return false;
             // This first bridge consumes CRM's stream only. Cross-service
             // events must not be smuggled onto a producer's stream.
-            if (resource.Kind != "crm.account" ||
-                aggregateType.GetString() != "account" ||
-                !type.StartsWith("crm.account.", StringComparison.Ordinal) ||
-                type.Length > 160) return false;
+            var correctProducer = stream switch
+            {
+                CrmStream => resource.Kind == "crm.account" &&
+                    aggregateType.GetString() == "account" &&
+                    type.StartsWith("crm.account.", StringComparison.Ordinal),
+                PricingStream => resource.Kind == "pricing.rate" &&
+                    aggregateType.GetString() == "rate" &&
+                    type.StartsWith("pricing.rate.", StringComparison.Ordinal),
+                _ => false
+            };
+            if (!correctProducer || type.Length > 160) return false;
             if (aggregateGuid != resource.Id) return false;
             invalidation = new(
-                id, type, "account", aggregateGuid,
+                id, type, aggregateType.GetString()!, aggregateGuid,
                 version.GetInt64(), occurred);
             return true;
         }

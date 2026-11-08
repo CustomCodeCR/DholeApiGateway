@@ -142,6 +142,13 @@ public sealed class RealtimeStreamBridge(
                 registry.Unsubscribe(subscriber.ConnectionId, resource);
                 await hub.Groups.RemoveFromGroupAsync(
                     subscriber.ConnectionId, resource.GroupName, ct);
+                // F6: immediately instruct this previously subscribed client to
+                // purge its cached REST snapshot. No business event or customer
+                // data is disclosed after revocation; payload is only kind + ID
+                // already known to the subscriber.
+                await hub.Clients.Client(subscriber.ConnectionId)
+                    .SendCoreAsync("resourceRevoked",
+                        new object?[] { resource.Kind, resource.Id.ToString("D") }, ct);
                 Denied.Add(1);
                 continue;
             }

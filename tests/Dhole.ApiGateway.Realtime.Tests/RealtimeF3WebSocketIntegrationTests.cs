@@ -38,7 +38,7 @@ public sealed class RealtimeF3WebSocketIntegrationTests
             var validId = Guid.TryParse(identity, out var id);
             lock (_allowed)
                 return Task.FromResult(validId &&
-                    _allowed.Contains(id) && resource.Kind == "crm.account" &&
+                    _allowed.Contains(id) && resource.Kind is ("crm.account" or "config.catalog-item") &&
                     resource.Id == ResourceId && !string.IsNullOrWhiteSpace(delegatedBearer));
         }
     }
@@ -112,11 +112,12 @@ public sealed class RealtimeF3WebSocketIntegrationTests
         return socket;
     }
 
-    private static async Task<string> Subscribe(WebSocket socket, int invocation)
+    private static async Task<string> Subscribe(WebSocket socket, int invocation,
+        string kind = "crm.account")
     {
         await SendHub(socket, JsonSerializer.Serialize(new {
             type = 1, invocationId = invocation.ToString(), target = "Subscribe",
-            arguments = new[] { "crm.account", ResourceId.ToString("D") }
+            arguments = new[] { kind, ResourceId.ToString("D") }
         }));
         return await ReceiveUntil(socket, root =>
             root.TryGetProperty("type", out var type) && type.GetInt32() == 3 &&
@@ -433,6 +434,141 @@ WHERE event_id = @event_id AND instance_id = @instance;
             restartedA?.Dispose();
             b?.Dispose();
             a?.Dispose();
+            foreach (var (key, value) in previous)
+                Environment.SetEnvironmentVariable(key, value);
+        }
+    }
+
+    [Fact]
+    public async Task F6_Config_real_redis_stream_delivers_only_authorized_websockets_and_revokes()
+    {
+        var redisConnection = Environment.GetEnvironmentVariable("F3_REDIS_TEST")
+            ?? throw new InvalidOperationException("F3_REDIS_TEST required.");
+        var postgres = Environment.GetEnvironmentVariable("F3_POSTGRES_TEST")
+            ?? throw new InvalidOperationException("F3_POSTGRES_TEST required.");
+        var instance = "ci-f6-config-" + Guid.NewGuid().ToString("N");
+        var access = new TestResourceAuthorizer();
+        var previous = new Dictionary<string, string?>();
+        var env = new Dictionary<string, string?>
+        {
+            ["Features__UniversalRealtimeEnabled"] = "true",
+            ["Realtime__Enabled"] = "true",
+            ["Realtime__BatchApproved"] = "true", // CI ONLY
+            ["Realtime__BridgeEnabled"] = "true",
+            ["Realtime__UniversalServicesBridgeEnabled"] = "true", // CI ONLY
+            ["Realtime__ReleaseId"] = "rt-20261107-01",
+            ["Realtime__RedisConnectionString"] = redisConnection,
+            ["Realtime__InboxPostgresConnectionString"] = postgres,
+            ["Realtime__InstanceId"] = instance,
+            ["Auth__Jwt__Issuer"] = "DholeAuthService",
+            ["Auth__Jwt__Audience"] = "DholeEcosystem",
+            ["Auth__Jwt__SecretKey"] = TestKey,
+            ["Cors__AllowedOrigins__0"] = "http://localhost"
+        };
+        foreach (var (key, value) in env)
+        {
+            previous[key] = Environment.GetEnvironmentVariable(key);
+            Environment.SetEnvironmentVariable(key, value);
+        }
+        try
+        {
+            using var app = new WebApplicationFactory<Program>().WithWebHostBuilder(host =>
+            {
+                host.ConfigureAppConfiguration((_, cfg) => cfg.AddInMemoryCollection(
+                    new Dictionary<string, string?>
+                    {
+                        ["Features:UniversalRealtimeEnabled"] = "true",
+                        ["Realtime:Enabled"] = "true",
+                        ["Realtime:BatchApproved"] = "true",
+                        ["Realtime:BridgeEnabled"] = "true",
+                        ["Realtime:UniversalServicesBridgeEnabled"] = "true",
+                        ["Realtime:ReleaseId"] = "rt-20261107-01",
+                        ["Realtime:RedisConnectionString"] = redisConnection,
+                        ["Realtime:InboxPostgresConnectionString"] = postgres,
+                        ["Realtime:InstanceId"] = instance,
+                        ["Auth:Jwt:Issuer"] = "DholeAuthService",
+                        ["Auth:Jwt:Audience"] = "DholeEcosystem",
+                        ["Auth:Jwt:SecretKey"] = TestKey,
+                        ["Cors:AllowedOrigins:0"] = "http://localhost"
+                    }));
+                host.ConfigureTestServices(services =>
+                {
+                    services.RemoveAll<IRealtimeResourceAuthorizer>();
+                    services.AddSingleton<IRealtimeResourceAuthorizer>(access);
+                });
+            });
+            using var boot = app.CreateClient();
+            Assert.True(app.Services.GetRequiredService<IConfiguration>()
+                .GetValue<bool>("Realtime:UniversalServicesBridgeEnabled"));
+
+            using var userA = await ConnectAuthenticatedAsync(app, IdA);
+            using var userB = await ConnectAuthenticatedAsync(app, IdB);
+            using var denied = await ConnectAuthenticatedAsync(app, IdDenied);
+            Assert.DoesNotContain("error",
+                await Subscribe(userA, 811, "config.catalog-item"), StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain("error",
+                await Subscribe(userB, 812, "config.catalog-item"), StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("error",
+                await Subscribe(denied, 813, "config.catalog-item"), StringComparison.OrdinalIgnoreCase);
+            var registry = app.Services.GetRequiredService<RealtimeConnectionRegistry>();
+            Assert.Equal(2, registry.GetSubscribers(new("config.catalog-item", ResourceId)).Count);
+
+            using var redis = await ConnectionMultiplexer.ConnectAsync(redisConnection);
+            var cache = redis.GetDatabase();
+            async Task Emit(Guid eventId)
+            {
+                var payload = JsonSerializer.Serialize(new
+                {
+                    eventId,
+                    eventType = "config.catalog-item.changed.v1",
+                    schemaVersion = 1,
+                    aggregateType = "catalog-item",
+                    aggregateId = ResourceId.ToString("D"),
+                    aggregateVersion = 9,
+                    occurredAtUtc = DateTimeOffset.UtcNow,
+                    producer = "DholeConfigService",
+                    correlationId = "config-ci-real-redis",
+                    audienceRef = $"config:catalog-item:{ResourceId:D}",
+                    payload = new { changedFields = new[] { "catalog" } }
+                });
+                await cache.StreamAddAsync("dhole.config.realtime.v1", new[]
+                {
+                    new NameValueEntry("event_id", eventId.ToString("D")),
+                    new NameValueEntry("message_type", "config.catalog-item.changed.v1"),
+                    new NameValueEntry("payload_json", payload)
+                });
+            }
+            var first = Guid.NewGuid();
+            await Emit(first);
+            foreach (var socket in new[] { userA, userB })
+            {
+                var response = await ReceiveUntil(socket, root =>
+                    root.TryGetProperty("target", out var target) &&
+                    target.GetString() == "resourceChanged");
+                Assert.Contains(first.ToString("D"), response, StringComparison.OrdinalIgnoreCase);
+                Assert.DoesNotContain("password", response, StringComparison.OrdinalIgnoreCase);
+            }
+
+            access.Revoke(IdB);
+            var next = Guid.NewGuid();
+            await Emit(next);
+            Assert.Contains(next.ToString("D"), await ReceiveUntil(userA, root =>
+                root.TryGetProperty("target", out var target) &&
+                target.GetString() == "resourceChanged"), StringComparison.OrdinalIgnoreCase);
+
+            var expiry = DateTimeOffset.UtcNow.AddSeconds(6);
+            while (registry.GetSubscribers(new("config.catalog-item", ResourceId)).Count != 1 &&
+                   DateTimeOffset.UtcNow < expiry)
+                await Task.Delay(25);
+            Assert.Single(registry.GetSubscribers(new("config.catalog-item", ResourceId)));
+            var revoke = await ReceiveUntil(userB, root =>
+                root.TryGetProperty("target", out var target) &&
+                target.GetString() == "resourceRevoked");
+            Assert.Contains(ResourceId.ToString("D"), revoke, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain("resourceChanged", revoke, StringComparison.Ordinal);
+        }
+        finally
+        {
             foreach (var (key, value) in previous)
                 Environment.SetEnvironmentVariable(key, value);
         }

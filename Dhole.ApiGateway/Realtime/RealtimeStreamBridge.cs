@@ -29,6 +29,22 @@ public sealed class RealtimeStreamBridge(
 {
     public const string CrmStream = "dhole.crm.realtime.v1";
     public const string PricingStream = "dhole.pricing.realtime.v1";
+    // F6.04-13: strictly isolated opt-in streams per resource owner.
+    public static readonly IReadOnlyDictionary<string, string> UniversalServiceStreams =
+        new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["dhole.auth.realtime.v1"] = "auth",
+            ["dhole.config.realtime.v1"] = "config",
+            ["dhole.auditlogs.realtime.v1"] = "audit",
+            ["dhole.storage.realtime.v1"] = "storage",
+            ["dhole.data-extraction.realtime.v1"] = "extraction",
+            ["dhole.reports.realtime.v1"] = "reports",
+            ["dhole.dynamics.realtime.v1"] = "dynamics",
+            ["dhole.ai.realtime.v1"] = "ai",
+            ["dhole.agent.realtime.v1"] = "agent",
+            ["dhole.content.realtime.v1"] = "content"
+        };
+
     private static readonly Meter Meter = new("Dhole.ApiGateway.Realtime.Bridge", "0.1.0");
     private static readonly Counter<long> Delivered = Meter.CreateCounter<long>("realtime_gateway_delivery");
     private static readonly Counter<long> Denied = Meter.CreateCounter<long>("realtime_gateway_denied");
@@ -46,6 +62,10 @@ public sealed class RealtimeStreamBridge(
         var bridges = new List<Task> { ConsumeStreamAsync(db, CrmStream, cancellationToken) };
         if (opts.PricingBridgeEnabled)
             bridges.Add(ConsumeStreamAsync(db, PricingStream, cancellationToken));
+        if (opts.UniversalServicesBridgeEnabled && opts.BatchApproved &&
+            string.Equals(opts.ReleaseId, "rt-20261107-01", StringComparison.Ordinal))
+            foreach (var serviceStream in UniversalServiceStreams.Keys)
+                bridges.Add(ConsumeStreamAsync(db, serviceStream, cancellationToken));
         await Task.WhenAll(bridges);
     }
 
@@ -114,7 +134,9 @@ public sealed class RealtimeStreamBridge(
             x => x.Name.ToString(), x => x.Value.ToString(), StringComparer.Ordinal);
         fields.TryGetValue("payload_json", out var json);
         fields.TryGetValue("event_id", out var idText);
-        if (stream == PricingStream)
+        // RedisStreamPublisher may expose event_id either as a top-level field
+        // or via headers. Do not trust either without matching the JSON eventId.
+        if (string.IsNullOrWhiteSpace(idText))
             fields.TryGetValue("header:event_id", out idText);
         if (Encoding.UTF8.GetByteCount(json ?? "") > 6000 ||
             !Guid.TryParse(idText, out var eventId) || eventId == Guid.Empty ||
@@ -202,13 +224,11 @@ public sealed class RealtimeStreamBridge(
                 !RealtimeResourcePolicy.TryFromAudienceRef(audience.GetString(), out resource))
                 return false;
             var type = eventType.GetString();
-            if (string.IsNullOrWhiteSpace(type) ||
-                !(type.StartsWith("crm.", StringComparison.Ordinal) ||
-                  type.StartsWith("pricing.", StringComparison.Ordinal)) ||
+            if (string.IsNullOrWhiteSpace(type) || type.Length > 160 ||
                 !type.EndsWith(".v1", StringComparison.Ordinal))
                 return false;
-            // This first bridge consumes CRM's stream only. Cross-service
-            // events must not be smuggled onto a producer's stream.
+            // Every dedicated stream has an exact resource/producer/event kind.
+            // No arbitrary consumer-selected group, audience or event names.
             var correctProducer = stream switch
             {
                 CrmStream => resource.Kind == "crm.account" &&
@@ -217,9 +237,12 @@ public sealed class RealtimeStreamBridge(
                 PricingStream => resource.Kind == "pricing.rate" &&
                     aggregateType.GetString() == "rate" &&
                     type.StartsWith("pricing.rate.", StringComparison.Ordinal),
-                _ => false
+                _ => MatchesUniversalProducer(stream, resource, type,
+                    aggregateType.GetString(),
+                    root.TryGetProperty("producer", out var producer) &&
+                    producer.ValueKind == JsonValueKind.String ? producer.GetString() : null)
             };
-            if (!correctProducer || type.Length > 160) return false;
+            if (!correctProducer) return false;
             if (aggregateGuid != resource.Id) return false;
             invalidation = new(
                 id, type, aggregateType.GetString()!, aggregateGuid,
@@ -231,6 +254,35 @@ public sealed class RealtimeStreamBridge(
         {
             return false;
         }
+    }
+
+    public static bool MatchesUniversalProducer(string stream, RealtimeResource resource,
+        string type, string? aggregateType, string? producer)
+    {
+        if (!UniversalServiceStreams.TryGetValue(stream, out var domain))
+            return false;
+        if (!resource.Kind.StartsWith(domain + ".", StringComparison.Ordinal) ||
+            aggregateType != resource.Kind[(domain.Length + 1)..])
+            return false;
+        var expectedProducer = domain switch
+        {
+            "auth" => "DholeAuthService",
+            "config" => "DholeConfigService",
+            "audit" => "DholeAuditLogsService",
+            "storage" => "DholeStorageService",
+            "extraction" => "DholeDataExtractionService",
+            "reports" => "DholeReportsService",
+            "dynamics" => "DholeDynamicsConnectorService",
+            "ai" => "DholeAIService",
+            "agent" => "DholeAgentService",
+            "content" => "DholeContentService",
+            _ => null
+        };
+        var expectedType = resource.Kind == "audit.event"
+            ? "audit.event.created.v1"
+            : resource.Kind + ".changed.v1";
+        return string.Equals(producer, expectedProducer, StringComparison.Ordinal) &&
+            string.Equals(type, expectedType, StringComparison.Ordinal);
     }
 
     private static async Task<bool> AlreadyProcessedAsync(

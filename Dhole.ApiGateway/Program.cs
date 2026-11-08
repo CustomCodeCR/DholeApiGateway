@@ -77,7 +77,10 @@ builder.Services.AddCustomCodeAuth(builder.Configuration, addJwt: true, addApiKe
 // GLOBAL batch flag and Gateway's own flag are both explicitly enabled.
 var universalRealtimeEnabled =
     builder.Configuration.GetValue<bool>("Features:UniversalRealtimeEnabled") &&
-    builder.Configuration.GetValue<bool>("Realtime:Enabled");
+    builder.Configuration.GetValue<bool>("Realtime:Enabled") &&
+    builder.Configuration.GetValue<bool>("Realtime:BatchApproved") &&
+    string.Equals(builder.Configuration["Realtime:ReleaseId"],
+        "rt-20261107-01", StringComparison.Ordinal);
 builder.Services.Configure<RealtimeHostOptions>(
     builder.Configuration.GetSection(RealtimeHostOptions.Section));
 if (universalRealtimeEnabled)
@@ -342,6 +345,29 @@ app.UseCors(CorsPolicyName);
 // Required before GatewayProxyMiddleware so Upgrade requests can be accepted and
 // proxied to downstream SignalR/WebSocket endpoints.
 app.UseWebSockets();
+
+// CORS does NOT validate WebSocket upgrades; check browser Origin explicitly
+// and require a validated bearer for native no-Origin clients.
+if (universalRealtimeEnabled)
+{
+    app.Use(async (context, next) =>
+    {
+        if (context.Request.Path.StartsWithSegments("/hubs/realtime") &&
+            context.WebSockets.IsWebSocketRequest)
+        {
+            var origin = context.Request.Headers.Origin.ToString();
+            var nativeBearer = context.Request.Headers.Authorization.ToString()
+                .StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase);
+            if (!(string.IsNullOrWhiteSpace(origin) && nativeBearer) &&
+                !RealtimeOriginPolicy.IsAllowed(origin, app.Configuration))
+            {
+                context.Response.StatusCode = StatusCodes.Status403Forbidden;
+                return;
+            }
+        }
+        await next(context);
+    });
+}
 
 // Authenticate first so rate limiting can distinguish valid JWTs from
 // unauthenticated traffic.

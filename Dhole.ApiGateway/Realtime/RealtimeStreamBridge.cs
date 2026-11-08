@@ -63,7 +63,7 @@ public sealed class RealtimeStreamBridge(
                 {
                     var claim = await db.StreamAutoClaimAsync(
                         CrmStream, group, consumer, 30_000,
-                        "0-0", count: 50;
+                        "0-0", count: 50);
                     entries = claim.ClaimedEntries;
                 }
                 if (entries.Length == 0)

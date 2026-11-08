@@ -41,6 +41,7 @@ jobs:
     env:
       NuGetPackageSourceCredentials_github: Username=github-actions;Password=${{ secrets.GITHUB_TOKEN }};ValidAuthenticationTypes=Basic
       F3_REDIS_TEST: 127.0.0.1:6379
+      F3_POSTGRES_TEST: Host=127.0.0.1;Port=5432;Database=dhole_gateway_f3_ci;Username=f3_ci;Password=nonproduction_only
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
@@ -50,12 +51,6 @@ jobs:
         run: dotnet restore tests/Dhole.ApiGateway.Realtime.Tests/Dhole.ApiGateway.Realtime.Tests.csproj --configfile NuGet.Config
       - name: Build Gateway and security suite (errors and warnings fail)
         run: dotnet build tests/Dhole.ApiGateway.Realtime.Tests/Dhole.ApiGateway.Realtime.Tests.csproj -c Release --no-restore --warnaserror
-      - name: F3 negative access, resource groups, token replay and Redis tests
-        run: |
-          mkdir -p TestResults
-          dotnet test tests/Dhole.ApiGateway.Realtime.Tests/Dhole.ApiGateway.Realtime.Tests.csproj -c Release --no-build \
-            --logger "trx;LogFileName=rt-20261107-01-f3.trx" --results-directory TestResults \
-            -- RunConfiguration.TreatNoTestsAsError=true
       - name: Validate additive Gateway PostgreSQL Inbox migration (ephemeral CI)
         run: |
           set -euo pipefail
@@ -66,6 +61,12 @@ jobs:
           docker run --rm --network host -e PGPASSWORD=nonproduction_only postgres:17 \
             psql -tAc "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='realtime' AND table_name IN ('gateway_inbox','gateway_deadletter')" \
             -h 127.0.0.1 -U f3_ci -d dhole_gateway_f3_ci | grep -qx '2'
+      - name: F3 negative access, resource groups, token replay and Redis tests
+        run: |
+          mkdir -p TestResults
+          dotnet test tests/Dhole.ApiGateway.Realtime.Tests/Dhole.ApiGateway.Realtime.Tests.csproj -c Release --no-build \
+            --logger "trx;LogFileName=rt-20261107-01-f3.trx" --results-directory TestResults \
+            -- RunConfiguration.TreatNoTestsAsError=true
       - name: Upload F3 evidence (no deployment)
         if: always()
         uses: actions/upload-artifact@v4

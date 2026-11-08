@@ -262,4 +262,165 @@ public sealed class RealtimeF3WebSocketIntegrationTests
                 Environment.SetEnvironmentVariable(key, value);
         }
     }
+    [Fact]
+    public async Task Two_gateway_instances_receive_the_same_authorized_event_and_restarted_instance_recovers_cursor()
+    {
+        var redisConnection = Environment.GetEnvironmentVariable("F3_REDIS_TEST")
+            ?? throw new InvalidOperationException("F3_REDIS_TEST required.");
+        var postgres = Environment.GetEnvironmentVariable("F3_POSTGRES_TEST")
+            ?? throw new InvalidOperationException("F3_POSTGRES_TEST required.");
+        var instanceA = "ci-gw-a-" + Guid.NewGuid().ToString("N");
+        var instanceB = "ci-gw-b-" + Guid.NewGuid().ToString("N");
+        var previous = new Dictionary<string, string?>();
+        var flags = new Dictionary<string, string?>
+        {
+            ["Features__UniversalRealtimeEnabled"] = "true",
+            ["Realtime__Enabled"] = "true",
+            ["Realtime__BatchApproved"] = "true",
+            ["Realtime__ReleaseId"] = "rt-20261107-01",
+            ["Realtime__BridgeEnabled"] = "true",
+            ["Realtime__RedisConnectionString"] = redisConnection,
+            ["Realtime__InboxPostgresConnectionString"] = postgres,
+            ["Realtime__InstanceId"] = instanceA,
+            ["Auth__Jwt__Issuer"] = "DholeAuthService",
+            ["Auth__Jwt__Audience"] = "DholeEcosystem",
+            ["Auth__Jwt__SecretKey"] = TestKey,
+            ["Cors__AllowedOrigins__0"] = "http://localhost"
+        };
+        foreach (var (key, value) in flags)
+        {
+            previous[key] = Environment.GetEnvironmentVariable(key);
+            Environment.SetEnvironmentVariable(key, value);
+        }
+        WebApplicationFactory<Program>? a = null;
+        WebApplicationFactory<Program>? b = null;
+        WebApplicationFactory<Program>? restartedA = null;
+        try
+        {
+            WebApplicationFactory<Program> Build(string instance)
+            {
+                // Explicit process flags are CI-only and restored after test.
+                Environment.SetEnvironmentVariable("Realtime__InstanceId", instance);
+                return new WebApplicationFactory<Program>().WithWebHostBuilder(host =>
+                {
+                    host.ConfigureAppConfiguration((_, cfg) => cfg.AddInMemoryCollection(
+                        new Dictionary<string, string?>
+                        {
+                            ["Features:UniversalRealtimeEnabled"] = "true",
+                            ["Realtime:Enabled"] = "true",
+                            ["Realtime:BatchApproved"] = "true",
+                            ["Realtime:ReleaseId"] = "rt-20261107-01",
+                            ["Realtime:BridgeEnabled"] = "true",
+                            ["Realtime:RedisConnectionString"] = redisConnection,
+                            ["Realtime:InboxPostgresConnectionString"] = postgres,
+                            ["Realtime:InstanceId"] = instance,
+                            ["Auth:Jwt:Issuer"] = "DholeAuthService",
+                            ["Auth:Jwt:Audience"] = "DholeEcosystem",
+                            ["Auth:Jwt:SecretKey"] = TestKey,
+                            ["Cors:AllowedOrigins:0"] = "http://localhost"
+                        }));
+                    host.ConfigureTestServices(services =>
+                    {
+                        services.RemoveAll<IRealtimeResourceAuthorizer>();
+                        services.AddSingleton<IRealtimeResourceAuthorizer>(new TestResourceAuthorizer());
+                    });
+                });
+            }
+            a = Build(instanceA);
+            using var aBoot = a.CreateClient();
+            b = Build(instanceB);
+            using var bBoot = b.CreateClient();
+            using var wsA = await ConnectAuthenticatedAsync(a, IdA);
+            using var wsB = await ConnectAuthenticatedAsync(b, IdB);
+            Assert.DoesNotContain("error", await Subscribe(wsA, 101), StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain("error", await Subscribe(wsB, 102), StringComparison.OrdinalIgnoreCase);
+
+            using var redis = await ConnectionMultiplexer.ConnectAsync(redisConnection);
+            var stream = redis.GetDatabase();
+            async Task Emit(Guid id)
+            {
+                var json = JsonSerializer.Serialize(new
+                {
+                    eventId = id, eventType = "crm.account.updated.v1",
+                    schemaVersion = 1, aggregateType = "account",
+                    aggregateId = ResourceId.ToString("D"), aggregateVersion = 1,
+                    occurredAtUtc = DateTimeOffset.UtcNow,
+                    producer = "DholeCRMService", correlationId = "ci-two-gateway-hosts",
+                    audienceRef = $"crm:account:{ResourceId:D}",
+                    payload = new { aggregateVersion = 1 }
+                });
+                await stream.StreamAddAsync(RealtimeStreamBridge.CrmStream, new[]
+                {
+                    new NameValueEntry("event_id", id.ToString("D")),
+                    new NameValueEntry("event_type", "crm.account.updated.v1"),
+                    new NameValueEntry("payload_json", json)
+                });
+            }
+            async Task AssertReceives(WebSocket ws, Guid id)
+            {
+                var got = await ReceiveUntil(ws, root =>
+                    root.TryGetProperty("target", out var target) &&
+                    target.GetString() == "resourceChanged" &&
+                    root.TryGetProperty("arguments", out var arguments) &&
+                    arguments.ValueKind == JsonValueKind.Array &&
+                    arguments.GetArrayLength() == 1 &&
+                    arguments[0].TryGetProperty("eventId", out var received) &&
+                    received.GetString() == id.ToString("D"));
+                Assert.Contains(id.ToString("D"), got, StringComparison.OrdinalIgnoreCase);
+            }
+
+            var first = Guid.NewGuid();
+            await Emit(first);
+            await Task.WhenAll(AssertReceives(wsA, first), AssertReceives(wsB, first));
+            Assert.Equal(1, a.Services.GetRequiredService<RealtimeConnectionRegistry>()
+                .GetSubscribers(new("crm.account", ResourceId)).Count);
+            Assert.Equal(1, b.Services.GetRequiredService<RealtimeConnectionRegistry>()
+                .GetSubscribers(new("crm.account", ResourceId)).Count);
+
+            // Stop the entire A host while Redis remains available. B stays up.
+            a.Dispose();
+            a = null;
+            var durableWhileDown = Guid.NewGuid();
+            await Emit(durableWhileDown);
+            await AssertReceives(wsB, durableWhileDown);
+
+            // Reusing the stable instance ID reuses the durable Redis group:
+            // its old cursor is not reset; pending/unread events are reconciled.
+            restartedA = Build(instanceA);
+            using var aRestart = restartedA.CreateClient();
+            var group = "dhole-rt-gw-v1-" + instanceA;
+            Assert.True(await stream.KeyExistsAsync(RealtimeStreamBridge.CrmStream));
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+            var recovered = false;
+            while (!timeout.IsCancellationRequested)
+            {
+                await using var db = new Npgsql.NpgsqlConnection(postgres);
+                await db.OpenAsync(timeout.Token);
+                await using var cmd = new Npgsql.NpgsqlCommand("""
+SELECT count(*) FROM realtime.gateway_inbox
+WHERE event_id = @event_id AND instance_id = @instance;
+""", db);
+                cmd.Parameters.AddWithValue("event_id", durableWhileDown);
+                cmd.Parameters.AddWithValue("instance", instanceA);
+                if (Convert.ToInt64(await cmd.ExecuteScalarAsync(timeout.Token)) == 1)
+                {
+                    recovered = true;
+                    break;
+                }
+                await Task.Delay(250, timeout.Token);
+            }
+            Assert.True(recovered, "Restarted Gateway did not consume durable stream cursor.");
+            var groups = await stream.StreamGroupInfoAsync(RealtimeStreamBridge.CrmStream);
+            Assert.Contains(groups, g => g.Name.ToString() == group);
+        }
+        finally
+        {
+            restartedA?.Dispose();
+            b?.Dispose();
+            a?.Dispose();
+            foreach (var (key, value) in previous)
+                Environment.SetEnvironmentVariable(key, value);
+        }
+    }
+
 }

@@ -8,6 +8,9 @@ on:
       - 'Dhole.ApiGateway/Program.cs'
       - 'Dhole.ApiGateway/Dhole.ApiGateway.csproj'
       - 'Dhole.ApiGateway/appsettings.json'
+      - 'version.json'
+      - 'Directory.Build.targets'
+      - 'CHANGELOG.md'
       - 'tests/Dhole.ApiGateway.Realtime.Tests/**'
       - '.github/workflows/realtime-f3-gateway.yml'
   workflow_dispatch:
@@ -47,6 +50,8 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '10.0.x'
+      - name: Validate Gateway candidate SemVer and changelog
+        run: python3 scripts/verify_dhole_version.py
       - name: Restore isolated Gateway and F3 suite
         run: dotnet restore tests/Dhole.ApiGateway.Realtime.Tests/Dhole.ApiGateway.Realtime.Tests.csproj --configfile NuGet.Config
       - name: Build Gateway and security suite (errors and warnings fail)

@@ -326,4 +326,32 @@ public sealed class RealtimeF3SecurityTests
     {
         Assert.True(UniversalRealtimeHub.HasGuidSubject(User(Guid.NewGuid())));
     }
+    [Theory]
+    [InlineData("https://dhole.customcodecr.com", true)]
+    [InlineData("https://sistema.logisticacastrofallas.com", true)]
+    [InlineData("http://localhost:5173", true)]
+    [InlineData("https://evil.example", false)]
+    [InlineData("https://dhole.customcodecr.com.evil.example", false)]
+    [InlineData("http://dhole.customcodecr.com", false)]
+    [InlineData("https://dhole.customcodecr.com:8443", false)]
+    [InlineData("https://user:password@dhole.customcodecr.com", false)]
+    [InlineData("https://dhole.customcodecr.com/path", false)]
+    [InlineData("https://dhole.customcodecr.com/?x=1", false)]
+    [InlineData("file:///etc/passwd", false)]
+    [InlineData("null", false)]
+    [InlineData("", false)]
+    [InlineData("https://*.customcodecr.com", false)]
+    [InlineData("ftp://dhole.customcodecr.com", false)]
+    public void Websocket_origin_must_match_explicit_CORS_origin(
+        string origin, bool allowed)
+    {
+        var configuration = new Microsoft.Extensions.Configuration.ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?> {
+                ["Cors:AllowedOrigins:0"] = "https://dhole.customcodecr.com",
+                ["Cors:AllowedOrigins:1"] = "https://sistema.logisticacastrofallas.com",
+                ["Cors:AllowedOrigins:2"] = "http://localhost:5173"
+            }).Build();
+        Assert.Equal(allowed, RealtimeOriginPolicy.IsAllowed(origin, configuration));
+    }
+
 }

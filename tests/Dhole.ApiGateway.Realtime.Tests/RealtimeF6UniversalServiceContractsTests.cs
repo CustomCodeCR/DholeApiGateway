@@ -31,6 +31,7 @@ public sealed class RealtimeF6UniversalServiceContractsTests
     [InlineData("auth.user", "dhole.auth.realtime.v1", "DholeAuthService")]
     [InlineData("config.catalog-group", "dhole.config.realtime.v1", "DholeConfigService")]
     [InlineData("config.catalog-item", "dhole.config.realtime.v1", "DholeConfigService")]
+    [InlineData("srm.supplier", "dhole.config.realtime.v1", "DholeConfigService")]
     [InlineData("audit.event", "dhole.auditlogs.realtime.v1", "DholeAuditLogsService")]
     [InlineData("storage.file", "dhole.storage.realtime.v1", "DholeStorageService")]
     [InlineData("extraction.execution", "dhole.data-extraction.realtime.v1", "DholeDataExtractionService")]

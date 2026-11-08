@@ -186,13 +186,15 @@ public sealed class RealtimeStreamBridge(
                   type.StartsWith("pricing.", StringComparison.Ordinal)) ||
                 !type.EndsWith(".v1", StringComparison.Ordinal))
                 return false;
-            if (resource.Kind == "crm.account" &&
-                !type.StartsWith("crm.", StringComparison.Ordinal)) return false;
-            if (resource.Kind == "pricing.rate" &&
-                !type.StartsWith("pricing.", StringComparison.Ordinal)) return false;
+            // This first bridge consumes CRM's stream only. Cross-service
+            // events must not be smuggled onto a producer's stream.
+            if (resource.Kind != "crm.account" ||
+                aggregateType.GetString() != "account" ||
+                !type.StartsWith("crm.account.", StringComparison.Ordinal) ||
+                type.Length > 160) return false;
             if (aggregateGuid != resource.Id) return false;
             invalidation = new(
-                id, type, aggregateType.GetString()!, aggregateGuid,
+                id, type, "account", aggregateGuid,
                 version.GetInt64(), occurred);
             return true;
         }

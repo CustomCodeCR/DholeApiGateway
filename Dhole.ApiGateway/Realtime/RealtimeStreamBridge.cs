@@ -261,8 +261,11 @@ public sealed class RealtimeStreamBridge(
     {
         if (!UniversalServiceStreams.TryGetValue(stream, out var domain))
             return false;
-        if (!resource.Kind.StartsWith(domain + ".", StringComparison.Ordinal) ||
-            aggregateType != resource.Kind[(domain.Length + 1)..])
+        var exactKind = resource.Kind.StartsWith(domain + ".", StringComparison.Ordinal) &&
+            aggregateType == resource.Kind[(domain.Length + 1)..];
+        var srmCatalogAlias = domain == "config" &&
+            resource.Kind == "srm.supplier" && aggregateType == "supplier";
+        if (!exactKind && !srmCatalogAlias)
             return false;
         var expectedProducer = domain switch
         {

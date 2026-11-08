@@ -99,7 +99,7 @@ public sealed class OwnerRestRealtimeResourceAuthorizer(
         if (service is null || route is null ||
             !gatewayOptions.Value.HealthChecks.TryGetValue(service, out var destination) ||
             !Uri.TryCreate(destination, UriKind.Absolute, out var origin) ||
-            origin.Scheme != Uri.UriSchemeHttp ||
+            origin.Scheme is not ("http" or "https") ||
             !string.IsNullOrEmpty(origin.UserInfo)) return false;
         // URI paths never interpolate arbitrary user text: resource IDs are Guid.
         var url = new Uri(origin.GetLeftPart(UriPartial.Authority) + route);

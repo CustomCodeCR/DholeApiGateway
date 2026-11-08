@@ -1,3 +1,7 @@
+using Dhole.ApiGateway.Realtime;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Http.Connections;
+using StackExchange.Redis;
 using System.Threading.RateLimiting;
 using CustomCodeFramework.Api.DependencyInjection;
 using CustomCodeFramework.Auth.DependencyInjection;
@@ -68,6 +72,93 @@ const string CorsPolicyName = "DholeWebCors";
 builder.Services.AddCustomCodeApiWithSwagger(title: "Dhole Api Gateway", version: "v1");
 
 builder.Services.AddCustomCodeAuth(builder.Configuration, addJwt: true, addApiKeys: false);
+
+// F3 candidate: universal Hub and bridge do not exist at runtime unless the
+// GLOBAL batch flag and Gateway's own flag are both explicitly enabled.
+var universalRealtimeEnabled =
+    builder.Configuration.GetValue<bool>("Features:UniversalRealtimeEnabled") &&
+    builder.Configuration.GetValue<bool>("Realtime:Enabled");
+builder.Services.Configure<RealtimeHostOptions>(
+    builder.Configuration.GetSection(RealtimeHostOptions.Section));
+if (universalRealtimeEnabled)
+{
+    var redisConnection = builder.Configuration["Realtime:RedisConnectionString"];
+    var postgresConnection = builder.Configuration["Realtime:InboxPostgresConnectionString"];
+    var instanceId = builder.Configuration["Realtime:InstanceId"];
+    // All hosts need stable, unique instance IDs; independent consumer groups
+    // ensure every host receives events for its own local SignalR connections.
+    if (string.IsNullOrWhiteSpace(redisConnection) ||
+        string.IsNullOrWhiteSpace(postgresConnection) ||
+        string.IsNullOrWhiteSpace(instanceId) ||
+        instanceId.Length > 80 ||
+        instanceId.Any(c => !char.IsAsciiLetterOrDigit(c) && c != '-'))
+        throw new InvalidOperationException(
+            "Realtime requires explicit Redis, PostgreSQL inbox and unique stable InstanceId.");
+
+    builder.Services.AddSingleton<IConnectionMultiplexer>(_ =>
+        ConnectionMultiplexer.Connect(redisConnection));
+    builder.Services.AddSingleton<RealtimeAccessTicketStore>();
+    builder.Services.AddSingleton<RealtimeConnectionRegistry>();
+    builder.Services.AddSingleton<IRealtimeResourceAuthorizer,
+        OwnerRestRealtimeResourceAuthorizer>();
+    builder.Services.AddHttpClient("realtime-acl", client =>
+            client.Timeout = TimeSpan.FromSeconds(6))
+        .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler
+        {
+            AllowAutoRedirect = false,
+            UseCookies = false,
+        });
+    builder.Services.AddSignalR(options =>
+    {
+        options.MaximumReceiveMessageSize = 2048;
+        options.MaximumParallelInvocationsPerClient = 1;
+        options.EnableDetailedErrors = false;
+    });
+
+    builder.Services.PostConfigure<JwtBearerOptions>(
+        JwtBearerDefaults.AuthenticationScheme, options =>
+        {
+            var previous = options.Events.OnMessageReceived;
+            options.Events.OnMessageReceived = async context =>
+            {
+                if (previous is not null) await previous(context);
+                if (!context.Request.Path.StartsWithSegments("/hubs/realtime"))
+                    return;
+
+                // Direct bearer for non-browser clients, validated normally.
+                var header = context.Request.Headers.Authorization.ToString();
+                if (header.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
+                    context.HttpContext.Items[
+                        RealtimeAuthentication.DelegatedTokenItem] =
+                        header["Bearer ".Length..].Trim();
+
+                // No access_token URL fallback. Browser only receives a
+                // random, one-use Redis ticket from an authenticated POST.
+                if (context.Request.Path.Equals("/hubs/realtime",
+                    StringComparison.OrdinalIgnoreCase) &&
+                    string.IsNullOrWhiteSpace(context.Token))
+                {
+                    var ticket = context.Request.Query["ticket"].ToString();
+                    if (!string.IsNullOrWhiteSpace(ticket))
+                    {
+                        var tickets = context.HttpContext.RequestServices
+                            .GetRequiredService<RealtimeAccessTicketStore>();
+                        var redeemed = await tickets.RedeemAsync(
+                            ticket, context.HttpContext.RequestAborted);
+                        if (redeemed is not null)
+                        {
+                            context.Token = redeemed;
+                            context.HttpContext.Items[
+                                RealtimeAuthentication.DelegatedTokenItem] = redeemed;
+                        }
+                    }
+                }
+            };
+        });
+    if (builder.Configuration.GetValue<bool>("Realtime:BridgeEnabled"))
+        builder.Services.AddHostedService<RealtimeStreamBridge>();
+}
+
 
 // EF Core migrations create the integration database (when PostgreSQL permits it)
 // and apply versioned schema changes on startup. The module remains opt-in.
@@ -271,6 +362,34 @@ static object CreateGatewayHealthResponse() =>
     };
 
 app.MapGet("/health", () => Results.Ok(CreateGatewayHealthResponse())).AllowAnonymous();
+
+if (universalRealtimeEnabled)
+{
+    app.MapHub<UniversalRealtimeHub>("/hubs/realtime", options =>
+    {
+        // F3 explicitly verifies WSS only; F4 implements other fallback modes.
+        options.Transports = HttpTransportType.WebSockets;
+        options.CloseOnAuthenticationExpiration = true;
+    }).RequireAuthorization();
+
+    app.MapPost("/hubs/realtime/ticket",
+        async (HttpContext context, RealtimeAccessTicketStore tickets) =>
+        {
+            // RequireAuthorization validates the JWT before this handler.
+            // Header is never logged or returned to the browser.
+            var bearerHeader = context.Request.Headers.Authorization.ToString();
+            if (!bearerHeader.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
+                return Results.Unauthorized();
+            var token = bearerHeader["Bearer ".Length..].Trim();
+            if (string.IsNullOrWhiteSpace(token)) return Results.Unauthorized();
+            var ticket = await tickets.IssueAsync(token, context.RequestAborted);
+            context.Response.Headers.CacheControl = "no-store";
+            return Results.Ok(new {
+                ticket, expiresInSeconds = RealtimeAccessTicketStore.LifetimeSeconds
+            });
+        }).RequireAuthorization();
+}
+
 
 // The registry contains declared release versions; individual health endpoints
 // are authoritative for the version of a running process when available.

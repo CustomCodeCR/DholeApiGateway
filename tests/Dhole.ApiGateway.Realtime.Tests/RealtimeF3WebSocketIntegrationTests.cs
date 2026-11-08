@@ -134,6 +134,32 @@ public sealed class RealtimeF3WebSocketIntegrationTests
         var instance = "ci-f3-" + Guid.NewGuid().ToString("N");
         var access = new TestResourceAuthorizer();
 
+        // Minimal-hosting Program reads flags before WebApplicationFactory
+        // ConfigureAppConfiguration is invoked. Set process env just for this
+        // isolated CI test and restore it in finally.
+        var original = new Dictionary<string, string?>();
+        var flags = new Dictionary<string, string?>
+        {
+            ["Features__UniversalRealtimeEnabled"] = "true",
+            ["Realtime__Enabled"] = "true",
+            ["Realtime__BatchApproved"] = "true",
+            ["Realtime__ReleaseId"] = "rt-20261107-01",
+            ["Realtime__BridgeEnabled"] = "true",
+            ["Realtime__RedisConnectionString"] = redisConnection,
+            ["Realtime__InboxPostgresConnectionString"] = postgres,
+            ["Realtime__InstanceId"] = instance,
+            ["Auth__Jwt__Issuer"] = "DholeAuthService",
+            ["Auth__Jwt__Audience"] = "DholeEcosystem",
+            ["Auth__Jwt__SecretKey"] = TestKey,
+            ["Cors__AllowedOrigins__0"] = "http://localhost"
+        };
+        foreach (var (key, value) in flags)
+        {
+            original[key] = Environment.GetEnvironmentVariable(key);
+            Environment.SetEnvironmentVariable(key, value);
+        }
+        try
+        {
         using var application = new WebApplicationFactory<Program>()
             .WithWebHostBuilder(host =>
             {
@@ -229,5 +255,11 @@ public sealed class RealtimeF3WebSocketIntegrationTests
             target.GetString() == "resourceChanged");
         Assert.Contains(second.ToString("D"), afterRevoke, StringComparison.OrdinalIgnoreCase);
         Assert.Single(registry.GetSubscribers(new("crm.account", ResourceId)));
+        }
+        finally
+        {
+            foreach (var (key, value) in original)
+                Environment.SetEnvironmentVariable(key, value);
+        }
     }
 }

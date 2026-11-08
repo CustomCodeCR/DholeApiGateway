@@ -544,3 +544,6 @@ if (app.Configuration.GetValue<bool>("ThirdParty:Enabled"))
 }
 
 app.Run();
+
+// Enables isolated TestServer Hub authentication/transport tests; no runtime effect.
+public partial class Program { }

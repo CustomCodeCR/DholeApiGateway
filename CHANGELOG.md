@@ -2,6 +2,8 @@
 
 ## [1.4.6] - 2026-11-08 (F9 pre-staging candidate)
 
+- Corrige secuencia de smoke F9: ejecutar HTTPS/Hub en el workflow propio de Gateway inmediatamente después de su deploy a staging, usando solo script versionado en DholeSystem/develop, sin JWT QA. Resultado sanitizado disponible como artifact; fallo 404 bloquea certificación, nunca se marca éxito.
+
 - Alineado catálogo de versiones de los 13 servicios a release global 1.13.14; validación TLS/WSS post-deploy staging sigue pendiente, sin cambios de autenticación ni activación del Hub. Evidencia aislada de F3 permanece válida para revisión de PR; merges/despliegues requieren gates de seguridad del release.
 
 

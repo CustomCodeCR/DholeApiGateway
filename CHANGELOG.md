@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.5.2] - 2026-11-09 (F9 upstream WebSocket authentication status)
+
+- PATCH: enable ClientWebSocket CollectHttpResponseDetails and pass through the NotificationsHub upstream handshake HTTP 401/403 instead of misreporting expected anonymous denial as 502. Preserve HTTP 502 for real transport failure and existing authorized WebSocket proxy flow.
+- F9 staging 1.5.1 confirmed public HTTPS /health using curl, but anonymous WebSocket handshake was incorrectly translated into HTTP 502. Hotfix retains negative WSS security gate. Authorized WSS and owner ACL not yet certified.
+- Ecosystem release patch 1.14.2. No changes to CustomCodeFramework, master or production flags.
+
+
 ## [1.5.1] - 2026-11-09 (F9 staging health HTTP 403 probe fix)
 
 - PATCH: F9 HTTPS/Hub/WebSocket smoke now uses the same validated curl client as DholeSystem staging health checks, avoiding urllib-only edge 403 behavior; TLS verification and negative authentication checks remain enforced.

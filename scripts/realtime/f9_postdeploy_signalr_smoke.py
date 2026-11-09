@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """F9 read-only signalR route smoke: run ONLY after staging deployment.
 
-It proves TLS reachability, anonymous auth denial and route presence. It does
-NOT prove authorized WSS delivery, owner permissions or F3 formal acceptance.
+It probes TLS reachability and unauthenticated denial at the existing NotificationsHub proxy. It does
+NOT prove authorized WSS delivery, owner permissions or formal production acceptance.
 No QA JWT, SSH, server writes, flags or secrets needed.
 """
 from __future__ import annotations
@@ -47,8 +47,8 @@ def main() -> int:
               "formalF3Approved":False,"f10Authorized":False}
     try:
         record["healthHttpStatus"] = status(ORIGIN + "/health")
-        record["anonymousHubNegotiateStatus"] = status(ORIGIN + "/hubs/realtime/negotiate?negotiateVersion=1", "POST")
-        record["anonymousWebsocketUpgradeStatus"] = status(ORIGIN.replace("https://","https://") + "/hubs/realtime", "GET", True)
+        record["anonymousHubNegotiateStatus"] = status(ORIGIN + "/api/notifications/hub/negotiate?negotiateVersion=1", "POST")
+        record["anonymousWebsocketUpgradeStatus"] = status(ORIGIN.replace("https://","https://") + "/api/notifications/hub", "GET", True)
         record["problems"] = evaluate(record["healthHttpStatus"],
                                       record["anonymousHubNegotiateStatus"],
                                       record["anonymousWebsocketUpgradeStatus"])
@@ -61,7 +61,7 @@ def main() -> int:
     if record["problems"]:
         print("F9_STAGING_SIGNALR_POSTDEPLOY_BLOCKED: "+"; ".join(record["problems"]))
         return 1
-    print("F9_STAGING_SIGNALR_ROUTE_READY: real TLS route and anonymous authorization; real owner ACL still unverified")
+    print("NOTIFICATIONS_HUB_STAGING_ROUTE_READY: TLS proxy route and anonymous authorization; owner ACL still unverified")
     return 0
 
 if __name__ == "__main__":

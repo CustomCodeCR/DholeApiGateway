@@ -1,14 +1,14 @@
 {
   "schemaVersion": 1,
   "ecosystem": "Dhole",
-  "ecosystemVersion": "1.14.0",
+  "ecosystemVersion": "1.14.1",
   "releaseId": "rt-20261107-01",
-  "source": "notificationshub-16-component-candidate-manifest",
+  "source": "f9-staging-smoke-hotfix-gateway-registry",
   "services": [
     {
       "key": "gateway",
       "component": "DholeApiGateway",
-      "version": "1.5.0",
+      "version": "1.5.1",
       "repository": "CustomCodeCR/DholeApiGateway"
     },
     {
@@ -98,7 +98,7 @@
     {
       "key": "system",
       "component": "DholeSystem",
-      "version": "1.14.0",
+      "version": "1.14.1",
       "repository": "CustomCodeCR/DholeSystem"
     }
   ]

@@ -69,9 +69,6 @@ builder.Services.AddCustomCodeApiWithSwagger(title: "Dhole Api Gateway", version
 
 builder.Services.AddCustomCodeAuth(builder.Configuration, addJwt: true, addApiKeys: false);
 
-// The existing /api/notifications Gateway proxy owns all browser SignalR
-// routing; DholeApiGateway never hosts a second realtime Hub.
-
 // EF Core migrations create the integration database (when PostgreSQL permits it)
 // and apply versioned schema changes on startup. The module remains opt-in.
 if (builder.Configuration.GetValue<bool>("ThirdParty:Enabled"))
@@ -255,8 +252,6 @@ app.UseCors(CorsPolicyName);
 // proxied to downstream SignalR/WebSocket endpoints.
 app.UseWebSockets();
 
-// The existing proxy preserves the authenticated Notifications WebSocket upgrade.
-
 // Authenticate first so rate limiting can distinguish valid JWTs from
 // unauthenticated traffic.
 app.UseAuthentication();
@@ -277,8 +272,7 @@ static object CreateGatewayHealthResponse() =>
 
 app.MapGet("/health", () => Results.Ok(CreateGatewayHealthResponse())).AllowAnonymous();
 
-// The registry contains declared release versions; individual health endpoints
-// are authoritative for the version of a running process when available.
+// The registry contains declared versions. Health may supply the live version.
 app.MapGet("/api/system/versions", (IWebHostEnvironment environment) =>
 {
     var path = Path.Combine(environment.ContentRootPath, "service-versions.json");
@@ -389,6 +383,7 @@ app.MapGet(
     )
     .AllowAnonymous();
 
+// Third-party integration is opt-in. The backing database is separate from service data.
 if (app.Configuration.GetValue<bool>("ThirdParty:Enabled"))
 {
     try

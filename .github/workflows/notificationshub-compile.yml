@@ -1,4 +1,5 @@
 name: Gateway Notifications proxy pilot - compile candidate only
+# Recompile after removing Gateway-only universal Hub source files.
 on:
   push:
     branches: [feature/rt-notificationshub-20261109-01]

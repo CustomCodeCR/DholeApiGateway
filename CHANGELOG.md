@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.5.1] - 2026-11-09 (F9 staging health HTTP 403 probe fix)
+
+- PATCH: F9 HTTPS/Hub/WebSocket smoke now uses the same validated curl client as DholeSystem staging health checks, avoiding urllib-only edge 403 behavior; TLS verification and negative authentication checks remain enforced.
+- Added bounded postdeploy health retry and deterministic tests of HTTP/1.1 Upgrade and transport failures. No app/API authorization or production feature flags changed.
+- Ecosystem hotfix 1.14.1 / rt-20261109-f9-hotfix-01. Staging verification pending; production/master untouched.
+
+
 ## [1.5.0] - 2026-11-09 (NotificationsHub universal realtime pilot; candidate)
 
 - MINOR: Gateway no longer registers the duplicate universal SignalR host; existing Notifications WebSocket proxy retained.

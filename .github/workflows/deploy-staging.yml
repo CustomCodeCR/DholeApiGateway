@@ -76,8 +76,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          test -f .dhole-system/scripts/realtime/f9_postdeploy_signalr_smoke.py
-          python3 .dhole-system/scripts/realtime/f9_postdeploy_signalr_smoke.py
+          test -f scripts/realtime/f9_postdeploy_signalr_smoke.py
+          python3 scripts/realtime/f9_postdeploy_signalr_smoke.py
       - name: Publish sanitized F9 postdeploy Gateway evidence
         if: always()
         uses: actions/upload-artifact@v4

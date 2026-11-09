@@ -1,5 +1,10 @@
 # Changelog
 
+## [1.4.6] - 2026-11-08 (F9 pre-staging candidate)
+
+- Alineado catálogo de versiones de los 13 servicios a release global 1.13.14; validación TLS/WSS post-deploy staging sigue pendiente, sin cambios de autenticación ni activación del Hub. Evidencia aislada de F3 permanece válida para revisión de PR; merges/despliegues requieren gates de seguridad del release.
+
+
 ## [1.4.5] - 2026-11-08 (F3 no-QA WSS CI; candidate)
 
 - Integra prueba HTTPS/WSS con Traefik y Gateway real en GitHub-hosted CI, dos identidades sintéticas autorizadas y una denegada; Redis real efímero, JWT y TLS autogenerados y verificación de ACL REST. Sin variables o secretos manuales de staging.

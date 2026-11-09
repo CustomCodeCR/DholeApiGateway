@@ -13,6 +13,9 @@ on:
       - 'CHANGELOG.md'
       - 'tests/Dhole.ApiGateway.Realtime.Tests/**'
       - 'tests/f3-e2e/**'
+      - 'scripts/realtime/f9_postdeploy_signalr_smoke.py'
+      - 'scripts/realtime/test_f9_postdeploy_signalr_smoke.py'
+      - '.github/workflows/deploy-staging.yml'
       - '.github/workflows/realtime-f3-gateway.yml'
   workflow_dispatch:
 permissions:
@@ -73,6 +76,10 @@ jobs:
           dotnet test tests/Dhole.ApiGateway.Realtime.Tests/Dhole.ApiGateway.Realtime.Tests.csproj -c Release --no-build \
             --logger "trx;LogFileName=rt-20261107-01-f3.trx" --results-directory TestResults \
             -- RunConfiguration.TreatNoTestsAsError=true
+      - name: Validate F9 postdeploy smoke rejects 404, redirects and unauthenticated access
+        run: |
+          python3 -m py_compile scripts/realtime/f9_postdeploy_signalr_smoke.py scripts/realtime/test_f9_postdeploy_signalr_smoke.py
+          python3 -m unittest discover -s scripts/realtime -p test_f9_postdeploy_signalr_smoke.py -v
       - name: Upload F3 evidence (no deployment)
         if: always()
         uses: actions/upload-artifact@v4

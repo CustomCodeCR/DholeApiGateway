@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.4.7] - 2026-11-08 (Dhole realtime coordinated F2/F6/F10 hardening)
+
+- PATCH ecosystem 1.13.15; service-version catalog synchronized across the 13 service producers and Gateway. F10 production branch-deletion step removed in DholeSystem; F2/F6 AOF runtime checks are read-only.
+- Gateway realtime feature flags remain OFF; staging WSS/owner ACL not formally approved; no deploy/merge claimed.
+
+
 ## [1.4.6] - 2026-11-08 (F9 pre-staging candidate)
 
 - Corrige secuencia de smoke F9: ejecutar HTTPS/Hub en el workflow propio de Gateway inmediatamente después de su deploy a staging, usando solo script versionado en DholeSystem/develop, sin JWT QA. Resultado sanitizado disponible como artifact; fallo 404 bloquea certificación, nunca se marca éxito.

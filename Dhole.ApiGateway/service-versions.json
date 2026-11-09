@@ -1,92 +1,92 @@
 {
   "schemaVersion": 1,
   "ecosystem": "Dhole",
-  "ecosystemVersion": "1.13.12",
+  "ecosystemVersion": "1.13.13",
   "releaseId": "rt-20261107-01",
   "source": "release-manifest",
   "services": [
     {
       "key": "gateway",
       "component": "DholeApiGateway",
-      "version": "1.4.4",
+      "version": "1.4.5",
       "repository": "CustomCodeCR/DholeApiGateway"
     },
     {
       "key": "auth",
       "component": "DholeAuthService",
-      "version": "1.3.3",
+      "version": "1.3.4",
       "repository": "CustomCodeCR/DholeAuthService"
     },
     {
       "key": "crm",
       "component": "DholeCRMService",
-      "version": "1.5.3",
+      "version": "1.5.4",
       "repository": "CustomCodeCR/DholeCRMService"
     },
     {
       "key": "config",
       "component": "DholeConfigService",
-      "version": "1.3.3",
+      "version": "1.3.4",
       "repository": "CustomCodeCR/DholeConfigService"
     },
     {
       "key": "auditlogs",
       "component": "DholeAuditLogsService",
-      "version": "1.3.3",
+      "version": "1.3.4",
       "repository": "CustomCodeCR/DholeAuditLogsService"
     },
     {
       "key": "pricing",
       "component": "DholePricingService",
-      "version": "1.6.4",
+      "version": "1.6.5",
       "repository": "CustomCodeCR/DholePricingService"
     },
     {
       "key": "dataExtraction",
       "component": "DholeDataExtractionService",
-      "version": "1.4.3",
+      "version": "1.4.4",
       "repository": "CustomCodeCR/DholeDataExtractionService"
     },
     {
       "key": "ai",
       "component": "DholeAIService",
-      "version": "1.4.3",
+      "version": "1.4.4",
       "repository": "CustomCodeCR/DholeAIService"
     },
     {
       "key": "agent",
       "component": "DholeAgentService",
-      "version": "1.3.3",
+      "version": "1.3.4",
       "repository": "CustomCodeCR/DholeAgentService"
     },
     {
       "key": "dynamics-connector",
       "component": "DholeDynamicsConnectorService",
-      "version": "1.3.3",
+      "version": "1.3.4",
       "repository": "CustomCodeCR/DholeDynamicsConnectorService"
     },
     {
       "key": "reports",
       "component": "DholeReportsService",
-      "version": "1.5.3",
+      "version": "1.5.4",
       "repository": "CustomCodeCR/DholeReportsService"
     },
     {
       "key": "notifications",
       "component": "DholeNotificationsService",
-      "version": "1.3.3",
+      "version": "1.3.4",
       "repository": "CustomCodeCR/DholeNotificationsService"
     },
     {
       "key": "storage",
       "component": "DholeStorageService",
-      "version": "1.3.3",
+      "version": "1.3.4",
       "repository": "CustomCodeCR/DholeStorageService"
     },
     {
       "key": "content",
       "component": "DholeContentService",
-      "version": "1.3.3",
+      "version": "1.3.4",
       "repository": "CustomCodeCR/DholeContentService"
     }
   ],

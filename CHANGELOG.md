@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.4.5] - 2026-11-08 (F3 no-QA WSS CI; candidate)
+
+- Integra prueba HTTPS/WSS con Traefik y Gateway real en GitHub-hosted CI, dos identidades sintéticas autorizadas y una denegada; Redis real efímero, JWT y TLS autogenerados y verificación de ACL REST. Sin variables o secretos manuales de staging.
+- CI #42538238853 PASS: suite Gateway original y nuevo ensayo de transporte TLS/WSS. Esto no acredita entorno de staging, revocación comercial real ni gate F3 formal; no se activaron flags ni se desplegó.
+- Bump PATCH y catálogo de versiones de los 13 servicios; versión global candidata 1.13.13; ramas develop/master intactas.
+
+
 ## [1.4.4] - 2026-11-08 (F9 candidate only)
 
 - Actualizado el registro `service-versions.json` con la versión global `1.13.12` y los 13 microservicios coordinados. PATCH Gateway 1.4.3 → 1.4.4; API REST/WS y flags sin cambios; requiere gates formales antes del release.

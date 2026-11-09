@@ -1,0 +1,8 @@
+{
+  "name": "dhole-f3-live-traefik-wss-ci",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "ws": "8.18.3"
+  }
+}

@@ -1,0 +1,26 @@
+name: Gateway Notifications proxy pilot - compile candidate only
+# Recompile after removing Gateway-only universal Hub source files.
+on:
+  push:
+    branches: [feature/rt-notificationshub-20261109-01]
+    paths: [.github/workflows/notificationshub-compile.yml]
+permissions:
+  contents: read
+  packages: read
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      NuGetPackageSourceCredentials_github: Username=github-actions;Password=${{ secrets.GITHUB_TOKEN }};ValidAuthenticationTypes=Basic
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Check SemVer and release notes
+        run: python3 scripts/verify_dhole_version.py
+      - name: Restore Gateway
+        run: dotnet restore Dhole.ApiGateway/Dhole.ApiGateway.csproj --configfile NuGet.Config
+      - name: Compile existing Gateway Notifications WebSocket proxy
+        run: dotnet build Dhole.ApiGateway/Dhole.ApiGateway.csproj --no-restore -c Release

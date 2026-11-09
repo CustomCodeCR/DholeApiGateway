@@ -1,0 +1,211 @@
+name: Realtime F3 Gateway security (isolated)
+on:
+  push:
+    branches:
+      - feature/dhole-realtime-universal-rt-20261107-01
+    paths:
+      - 'Dhole.ApiGateway/Realtime/**'
+      - 'Dhole.ApiGateway/Program.cs'
+      - 'Dhole.ApiGateway/Dhole.ApiGateway.csproj'
+      - 'Dhole.ApiGateway/appsettings.json'
+      - 'version.json'
+      - 'Directory.Build.targets'
+      - 'CHANGELOG.md'
+      - 'tests/Dhole.ApiGateway.Realtime.Tests/**'
+      - 'tests/f3-e2e/**'
+      - 'scripts/realtime/f9_postdeploy_signalr_smoke.py'
+      - 'scripts/realtime/test_f9_postdeploy_signalr_smoke.py'
+      - '.github/workflows/deploy-staging.yml'
+      - '.github/workflows/realtime-f3-gateway.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+  packages: read
+concurrency:
+  group: rt-20261107-01-f3-gateway
+  cancel-in-progress: false
+jobs:
+  gateway-security:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      redis:
+        image: redis:7-alpine
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd "redis-cli ping" --health-interval 5s
+          --health-timeout 5s --health-retries 12
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: f3_ci
+          POSTGRES_PASSWORD: nonproduction_only
+          POSTGRES_DB: dhole_gateway_f3_ci
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U f3_ci -d dhole_gateway_f3_ci"
+          --health-interval 5s --health-timeout 5s --health-retries 12
+    env:
+      NuGetPackageSourceCredentials_github: Username=github-actions;Password=${{ secrets.GITHUB_TOKEN }};ValidAuthenticationTypes=Basic
+      F3_REDIS_TEST: 127.0.0.1:6379
+      F3_POSTGRES_TEST: Host=127.0.0.1;Port=5432;Database=dhole_gateway_f3_ci;Username=f3_ci;Password=nonproduction_only
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Validate Gateway candidate SemVer and changelog
+        run: python3 scripts/verify_dhole_version.py
+      - name: Restore isolated Gateway and F3 suite
+        run: dotnet restore tests/Dhole.ApiGateway.Realtime.Tests/Dhole.ApiGateway.Realtime.Tests.csproj --configfile NuGet.Config
+      - name: Build Gateway and security suite (errors and warnings fail)
+        run: dotnet build tests/Dhole.ApiGateway.Realtime.Tests/Dhole.ApiGateway.Realtime.Tests.csproj -c Release --no-restore --warnaserror
+      - name: Validate additive Gateway PostgreSQL Inbox migration (ephemeral CI)
+        run: |
+          set -euo pipefail
+          docker run --rm --network host -v "$PWD:/workspace:ro" \
+            -e PGPASSWORD=nonproduction_only postgres:17 \
+            psql -v ON_ERROR_STOP=1 -h 127.0.0.1 -U f3_ci -d dhole_gateway_f3_ci \
+            -f /workspace/Dhole.ApiGateway/Realtime/Migrations/20261108140000_AddGatewayRealtimeInbox.sql
+          docker run --rm --network host -e PGPASSWORD=nonproduction_only postgres:17 \
+            psql -tAc "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='realtime' AND table_name IN ('gateway_inbox','gateway_deadletter')" \
+            -h 127.0.0.1 -U f3_ci -d dhole_gateway_f3_ci | grep -qx '2'
+      - name: F3 negative access, resource groups, token replay and Redis tests
+        run: |
+          mkdir -p TestResults
+          dotnet test tests/Dhole.ApiGateway.Realtime.Tests/Dhole.ApiGateway.Realtime.Tests.csproj -c Release --no-build \
+            --logger "trx;LogFileName=rt-20261107-01-f3.trx" --results-directory TestResults \
+            -- RunConfiguration.TreatNoTestsAsError=true
+      - name: Validate F9 postdeploy smoke rejects 404, redirects and unauthenticated access
+        run: |
+          python3 -m py_compile scripts/realtime/f9_postdeploy_signalr_smoke.py scripts/realtime/test_f9_postdeploy_signalr_smoke.py
+          python3 -m unittest discover -s scripts/realtime -p test_f9_postdeploy_signalr_smoke.py -v
+      - name: Upload F3 evidence (no deployment)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rt-20261107-01-f3-gateway-security
+          path: TestResults/
+          if-no-files-found: warn
+
+  f3-real-traefik-wss-no-external-qa:
+    # Real Gateway + Traefik, disposable identities; not proof of staging rollout.
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      redis:
+        image: redis:7-alpine
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd "redis-cli ping" --health-interval 5s
+          --health-timeout 5s --health-retries 12
+    env:
+      NuGetPackageSourceCredentials_github: Username=github-actions;Password=${{ secrets.GITHUB_TOKEN }};ValidAuthenticationTypes=Basic
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.12.0'
+      - name: Restore and compile real Gateway
+        run: |
+          dotnet restore Dhole.ApiGateway/Dhole.ApiGateway.csproj --configfile NuGet.Config
+          dotnet build Dhole.ApiGateway/Dhole.ApiGateway.csproj -c Release --no-restore --warnaserror
+      - name: Install pinned isolated WebSocket test client
+        run: npm install --prefix tests/f3-e2e --ignore-scripts --no-audit --no-fund
+      - name: Generate ephemeral identity key and trusted short-lived TLS certificate
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/rt-f3-tls"
+          key="$(openssl rand -hex 48)"
+          echo "::add-mask::$key"
+          echo "F3_CI_SIGNING_KEY=$key" >> "$GITHUB_ENV"
+          openssl req -x509 -newkey rsa:2048 -sha256 -days 1 -nodes \
+            -keyout "$RUNNER_TEMP/rt-f3-tls/tls.key" \
+            -out "$RUNNER_TEMP/rt-f3-tls/tls.crt" -subj "/CN=localhost" \
+            -addext "subjectAltName=DNS:localhost" >/dev/null 2>&1
+          cat > "$RUNNER_TEMP/rt-f3-tls/dynamic.yml" <<'YAML'
+          tls:
+            certificates:
+              - certFile: /ci/tls.crt
+                keyFile: /ci/tls.key
+          http:
+            routers:
+              gateway:
+                rule: "Host(`localhost`)"
+                entryPoints: [websecure]
+                service: gateway
+                tls: {}
+            services:
+              gateway:
+                loadBalancer:
+                  servers:
+                    - url: "http://host.docker.internal:5051"
+          YAML
+      - name: Start ephemeral owner REST and Gateway (flags confined to CI process)
+        shell: bash
+        env:
+          Features__UniversalRealtimeEnabled: 'true'
+          Realtime__Enabled: 'true'
+          Realtime__BatchApproved: 'true'
+          Realtime__ReleaseId: 'rt-20261107-01'
+          Realtime__BridgeEnabled: 'false'
+          Realtime__RedisConnectionString: '127.0.0.1:6379'
+          Realtime__InboxPostgresConnectionString: 'Host=127.0.0.1;Database=ci_only_never_connected'
+          Realtime__InstanceId: 'f3-ci-live-traefik'
+          Auth__Jwt__Issuer: 'DholeAuthService'
+          Auth__Jwt__Audience: 'DholeEcosystem'
+          Cors__AllowedOrigins__0: 'https://localhost:8443'
+          CRM_HTTP_URL: 'http://127.0.0.1:5052'
+          ASPNETCORE_ENVIRONMENT: 'Production'
+        run: |
+          set -euo pipefail
+          export Auth__Jwt__SecretKey="$F3_CI_SIGNING_KEY"
+          nohup node tests/f3-e2e/live-wss.mjs owner > "$RUNNER_TEMP/f3-owner.log" 2>&1 &
+          echo "F3_OWNER_PID=$!" >> "$GITHUB_ENV"
+          nohup dotnet run --project Dhole.ApiGateway/Dhole.ApiGateway.csproj \
+            --no-launch-profile -c Release --no-build \
+            --urls http://0.0.0.0:5051 > "$RUNNER_TEMP/f3-gateway.log" 2>&1 &
+          echo "F3_GATEWAY_PID=$!" >> "$GITHUB_ENV"
+          for n in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:5051/health >/dev/null 2>&1; then break; fi
+            sleep 1
+          done
+          curl -fsS http://127.0.0.1:5051/health >/dev/null
+          docker run -d --name "rt-f3-traefik-${{ github.run_id }}" \
+            --add-host host.docker.internal:host-gateway \
+            -p 127.0.0.1:8443:443 \
+            -v "$RUNNER_TEMP/rt-f3-tls:/ci:ro" \
+            traefik:v3.3 \
+            --entrypoints.websecure.address=:443 \
+            --providers.file.filename=/ci/dynamic.yml \
+            --log.level=ERROR
+          for n in $(seq 1 30); do
+            if curl --cacert "$RUNNER_TEMP/rt-f3-tls/tls.crt" \
+              -fsS https://localhost:8443/health >/dev/null 2>&1; then break; fi
+            sleep 1
+          done
+          curl --cacert "$RUNNER_TEMP/rt-f3-tls/tls.crt" \
+            -fsS https://localhost:8443/health >/dev/null
+      - name: HTTPS negotiate, real WSS upgrade, two authorized and one denied
+        shell: bash
+        env:
+          NODE_EXTRA_CA_CERTS: ${{ runner.temp }}/rt-f3-tls/tls.crt
+        run: node tests/f3-e2e/live-wss.mjs verify
+      - name: Save test result without secrets
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rt-20261107-01-f3-traefik-wss-isolated
+          path: TestResults/f3-live-wss-traefik.json
+          if-no-files-found: warn
+      - name: Clean up ephemeral service and proxy
+        if: always()
+        shell: bash
+        run: |
+          docker rm -f "rt-f3-traefik-${{ github.run_id }}" >/dev/null 2>&1 || true
+          if [ -n "$F3_GATEWAY_PID" ]; then kill "$F3_GATEWAY_PID" 2>/dev/null || true; fi
+          if [ -n "$F3_OWNER_PID" ]; then kill "$F3_OWNER_PID" 2>/dev/null || true; fi

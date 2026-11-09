@@ -72,5 +72,19 @@ jobs:
           docker compose --env-file "$DHOLE_ENV_FILE" -f "$COMPOSE_FILE" -f "$COMPOSE_OVERRIDE" -p "$COMPOSE_PROJECT" up -d --no-deps --force-recreate --pull never api-gateway
           docker compose --env-file "$DHOLE_ENV_FILE" -f "$COMPOSE_FILE" -f "$COMPOSE_OVERRIDE" -p "$COMPOSE_PROJECT" ps api-gateway
 
+      - name: Validate universal SignalR route after API Gateway staging deploy
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f scripts/realtime/f9_postdeploy_signalr_smoke.py
+          python3 scripts/realtime/f9_postdeploy_signalr_smoke.py
+      - name: Publish sanitized F9 postdeploy Gateway evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rt-20261107-01-f9-gateway-postdeploy
+          path: F9Results/f9-staging-signalr-postdeploy.json
+          if-no-files-found: warn
+
       - name: Cleanup old images
         run: docker image prune -f

@@ -272,8 +272,7 @@ static object CreateGatewayHealthResponse() =>
 
 app.MapGet("/health", () => Results.Ok(CreateGatewayHealthResponse())).AllowAnonymous();
 
-// The registry contains declared release versions; individual health endpoints
-// are authoritative for the version of a running process when available.
+// The registry contains declared versions. Health may supply the live version.
 app.MapGet("/api/system/versions", (IWebHostEnvironment environment) =>
 {
     var path = Path.Combine(environment.ContentRootPath, "service-versions.json");
@@ -384,6 +383,7 @@ app.MapGet(
     )
     .AllowAnonymous();
 
+// Third-party integration is opt-in. The backing database is separate from service data.
 if (app.Configuration.GetValue<bool>("ThirdParty:Enabled"))
 {
     try
@@ -399,3 +399,6 @@ if (app.Configuration.GetValue<bool>("ThirdParty:Enabled"))
 }
 
 app.Run();
+
+// Enables isolated TestServer Hub authentication/transport tests; no runtime effect.
+public partial class Program { }

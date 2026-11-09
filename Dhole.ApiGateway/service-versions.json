@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "ecosystem": "Dhole",
   "ecosystemVersion": "1.14.1",
-  "releaseId": "rt-20261109-f9-hotfix-01",
+  "releaseId": "rt-20261107-01",
   "source": "f9-staging-smoke-hotfix-gateway-registry",
   "services": [
     {

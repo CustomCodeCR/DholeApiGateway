@@ -61,7 +61,7 @@ def main() -> int:
     parser.add_argument("--output", default="F9Results/f9-staging-signalr-postdeploy.json")
     args = parser.parse_args()
     record = {
-        "releaseId": "rt-20261109-f9-hotfix-01",
+        "releaseId": "rt-20261107-01",
         "environment": "staging",
         "scope": "POST_DEPLOY_READ_ONLY_ANONYMOUS",
         "origin": ORIGIN,

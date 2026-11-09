@@ -4,6 +4,6 @@
   "component": "DholeApiGateway",
   "version": "1.5.1",
   "ecosystemVersion": "1.14.1",
-  "releaseId": "rt-20261109-f9-hotfix-01",
+  "releaseId": "rt-20261107-01",
   "releaseStatus": "f9-probe-hotfix-staging-validation-pending"
 }

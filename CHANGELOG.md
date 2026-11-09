@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.5.0] - 2026-11-09 (NotificationsHub universal realtime pilot; candidate)
+
+- MINOR: Gateway no longer registers the duplicate universal SignalR host; existing Notifications WebSocket proxy retained.
+- Ecosystem candidate 1.14.0 / 16 Dhole repositories; CustomCodeFramework excluded. Release `rt-20261107-01`, isolated branch `feature/rt-notificationshub-20261109-01`.
+- Staging compile, deployment and post-deploy security audit pending; `develop`, `master` and production not changed by this candidate.
+
 ## [1.4.7] - 2026-11-08 (Dhole realtime coordinated F2/F6/F10 hardening)
 
 - PATCH ecosystem 1.13.15; service-version catalog synchronized across the 13 service producers and Gateway. F10 production branch-deletion step removed in DholeSystem; F2/F6 AOF runtime checks are read-only.

@@ -168,6 +168,9 @@ public sealed class GatewayProxyMiddleware(
 
         using var upstream = new ClientWebSocket();
         upstream.Options.KeepAliveInterval = TimeSpan.FromSeconds(20);
+        // Preserve the upstream HTTP handshake status. Without this, an expected
+        // anonymous 401/403 from NotificationsHub is incorrectly reported as 502.
+        upstream.Options.CollectHttpResponseDetails = true;
         CopyWebSocketRequestHeaders(context, upstream.Options);
         CopyWebSocketSubProtocols(context, upstream.Options);
 
@@ -205,6 +208,27 @@ public sealed class GatewayProxyMiddleware(
         }
         catch (WebSocketException exception)
         {
+            // A downstream authenticated Hub must return 401/403 to anonymous
+            // upgrades. These are expected authorization responses, not
+            // WebSocket transport failures. Never turn them into 502.
+            var responseStatus = (int)upstream.HttpStatusCode;
+            if (responseStatus is StatusCodes.Status401Unauthorized or StatusCodes.Status403Forbidden)
+            {
+                logger.LogInformation(
+                    "Gateway downstream rejected WebSocket {Path} with HTTP {StatusCode}",
+                    context.Request.Path,
+                    responseStatus
+                );
+                if (!context.Response.HasStarted)
+                {
+                    context.Response.StatusCode = responseStatus;
+                    if (responseStatus == StatusCodes.Status401Unauthorized)
+                        context.Response.Headers.WWWAuthenticate = "Bearer";
+                }
+
+                return;
+            }
+
             logger.LogError(
                 exception,
                 "Gateway could not establish WebSocket connection to {TargetUri}",

@@ -1,3 +1,8 @@
+## [1.5.3] - 2026-11-11 (Dhole Pricing seller request history manifest)
+
+- PATCH DH-20261111-PRICING-SELLER-REQUEST-HISTORY-093: catálogo de versiones coordinado Pricing 1.11.3, Web 1.32.2 y Gateway 1.5.3; ecosistema 1.32.2. Sin cambios de routing, API REST ni SignalR.
+- Release preparado para la promoción a master después de staging y autorización de producción.
+
 # Changelog
 
 ## [1.3.1] - 2026-11-06

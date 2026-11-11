@@ -1,14 +1,14 @@
 {
   "schemaVersion": 1,
   "ecosystem": "Dhole",
-  "ecosystemVersion": "1.14.2",
-  "releaseId": "rt-20261107-01",
-  "source": "f9-staging-websocket-handshake-status-hotfix",
+  "ecosystemVersion": "1.32.2",
+  "releaseId": "DH-20261111-PRICING-SELLER-REQUEST-HISTORY-093",
+  "source": "pricing-seller-request-history-coordinated-candidate",
   "services": [
     {
       "key": "gateway",
       "component": "DholeApiGateway",
-      "version": "1.5.2",
+      "version": "1.5.3",
       "repository": "CustomCodeCR/DholeApiGateway"
     },
     {
@@ -38,7 +38,7 @@
     {
       "key": "pricing",
       "component": "DholePricingService",
-      "version": "1.7.0",
+      "version": "1.11.3",
       "repository": "CustomCodeCR/DholePricingService"
     },
     {
@@ -92,7 +92,7 @@
     {
       "key": "web",
       "component": "DholeWeb",
-      "version": "1.14.0",
+      "version": "1.32.2",
       "repository": "CustomCodeCR/DholeWeb"
     },
     {

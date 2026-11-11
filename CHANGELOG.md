@@ -1,3 +1,8 @@
+## [1.5.3] - 2026-11-11 (Dhole coordinated request-history manifest)
+
+- PATCH DH-20261111-PRICING-SELLER-REQUEST-HISTORY-093: actualiza el manifiesto central de versiones para DholePricingService 1.11.3, DholeWeb 1.32.2 y Gateway 1.5.3. Versión global del candidato 1.32.2.
+- Metadatos exclusivamente: no altera routing, SignalR, REST, permisos ni despliegue. La integración coordinada requiere CI, validación staging y autorización de producción.
+
 # Changelog
 
 ## [1.5.2] - 2026-11-09 (F9 upstream WebSocket authentication status)

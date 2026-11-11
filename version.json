@@ -2,8 +2,8 @@
   "schemaVersion": 1,
   "ecosystem": "Dhole",
   "component": "DholeApiGateway",
-  "version": "1.5.2",
-  "ecosystemVersion": "1.14.2",
-  "releaseId": "rt-20261107-01",
-  "releaseStatus": "f9-websocket-auth-status-fix-staging-verification-pending"
+  "version": "1.5.3",
+  "ecosystemVersion": "1.32.2",
+  "releaseId": "DH-20261111-PRICING-SELLER-REQUEST-HISTORY-093",
+  "releaseStatus": "candidate-ci-and-staging-pending"
 }

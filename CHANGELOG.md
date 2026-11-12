@@ -1,3 +1,10 @@
+## [1.6.0] - 2026-11-11 (Dhole API Manager)
+
+- MINOR: Publicación versionada `/api/external/v1/{slug}` sin interrumpir los clientes legacy.
+- Ocho catálogos de Config expuestos como operaciones GET autorizables, con slug interno inmutable y mapeo explícito de campos.
+- Se mantiene aislamiento por API Key, autenticación técnica interna y publicación inicialmente deshabilitada; se requiere aprovisionar credenciales y validar staging.
+- Release coordinado con DholeWeb 1.40.0 y manifiesto global 1.40.0.
+
 ## [1.5.3] - 2026-11-11 (Dhole Pricing seller request history manifest)
 
 - PATCH DH-20261111-PRICING-SELLER-REQUEST-HISTORY-093: catálogo de versiones coordinado Pricing 1.11.3, Web 1.32.2 y Gateway 1.5.3; ecosistema 1.32.2. Sin cambios de routing, API REST ni SignalR.

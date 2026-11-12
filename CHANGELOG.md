@@ -1,3 +1,9 @@
+## [1.6.0] - 2026-11-11 (Dhole API Manager)
+
+- MINOR: Rutas de integración con versión v1 y compatibilidad de endpoints legacy.
+- Ocho catálogos de Config de solo lectura, con código de catálogo fijo, API Keys y mapeo de respuesta.
+- Se requiere aprovisionar credenciales, CI y validación staging antes de promoción a master.
+
 ## [1.5.3] - 2026-11-11 (Dhole coordinated request-history manifest)
 
 - PATCH DH-20261111-PRICING-SELLER-REQUEST-HISTORY-093: actualiza el manifiesto central de versiones para DholePricingService 1.11.3, DholeWeb 1.32.2 y Gateway 1.5.3. Versión global del candidato 1.32.2.

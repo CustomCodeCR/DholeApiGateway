@@ -1,3 +1,9 @@
+## [1.6.1] - 2026-11-14 (Dhole API Manager coordinated promotion)
+
+- PATCH: Sin cambios funcionales respecto a develop 1.6.0; actualiza manifiesto de servicios y metadatos para release global 1.53.0.
+- El Gateway mantiene API Manager, catálogos Config con identidades técnicas, API Keys y contratos /api/external/v1.
+- Promoción a master condicionada a staging y autorización expresa de producción.
+
 ## [1.6.0] - 2026-11-11 (Dhole API Manager)
 
 - MINOR: Rutas de integración con versión v1 y compatibilidad de endpoints legacy.

@@ -1,14 +1,14 @@
 {
   "schemaVersion": 1,
   "ecosystem": "Dhole",
-  "ecosystemVersion": "1.53.0",
-  "releaseId": "DH-20261114-API-MANAGER-PROMOTION-001",
-  "source": "api-manager-promotion-candidate",
+  "ecosystemVersion": "1.55.0",
+  "releaseId": "DH-20261114-API-MANAGER-PROMOTION-002",
+  "source": "api-manager-promotion-coordinated-release",
   "services": [
     {
       "key": "gateway",
       "component": "DholeApiGateway",
-      "version": "1.6.1",
+      "version": "1.6.2",
       "repository": "CustomCodeCR/DholeApiGateway"
     },
     {
@@ -20,7 +20,7 @@
     {
       "key": "crm",
       "component": "DholeCRMService",
-      "version": "1.31.0",
+      "version": "1.32.0",
       "repository": "CustomCodeCR/DholeCRMService"
     },
     {
@@ -92,13 +92,13 @@
     {
       "key": "web",
       "component": "DholeWeb",
-      "version": "1.53.0",
+      "version": "1.55.0",
       "repository": "CustomCodeCR/DholeWeb"
     },
     {
       "key": "system",
       "component": "DholeSystem",
-      "version": "1.52.1",
+      "version": "1.54.0",
       "repository": "CustomCodeCR/DholeSystem"
     }
   ]

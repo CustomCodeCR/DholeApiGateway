@@ -1,3 +1,8 @@
+## [1.6.2] - 2026-11-14 (API Manager 1.55.0 synchronized release)
+
+- PATCH: sincroniza el registro de versiones con el release 1.55.0 para promoción coordinada.
+- Conserva compatibilidad de las nueve APIs existentes, API Keys, rutas v1 y mapeos explícitos.
+
 ## [1.6.1] - 2026-11-14 (Dhole API Manager coordinated promotion)
 
 - PATCH: Sin cambios funcionales respecto a develop 1.6.0; actualiza manifiesto de servicios y metadatos para release global 1.53.0.

@@ -32,6 +32,8 @@ public sealed record ApprovedTarget(string Code, string Service, string Method, 
         = new Dictionary<string, IReadOnlyList<ThirdPartyFieldOption>>();
 }
 public sealed record IssueKeyRequest(string Label, int ExpiresInDays = 90, int MaxRequestsPerMinute = 30);
+public sealed record KeyEndpointLinksRequest(Guid[] EndpointIds);
+public sealed record PreviewRequest(PublishedEndpoint Endpoint, Dictionary<string, JsonElement>? Parameters, string? Id);
 
 public static class ThirdPartyApiEndpoints
 {
@@ -118,18 +120,34 @@ public static class ThirdPartyApiEndpoints
             var error = Validate(definition, cfg, gateway.Value);
             if (error is not null) return Results.BadRequest(new { message = error });
             await using var db = await Open(cfg, ctx.RequestAborted);
-            // Treat edits as a new contract: old keys must not silently gain new capabilities.
+            // A changed contract must not silently add new authority to a previously issued key.
+            // Unlink only this API, retaining the key and access to its other linked APIs.
             await using var tx = await db.BeginTransactionAsync(ctx.RequestAborted);
+            string? previousDocument;
+            await using (var before = new NpgsqlCommand(
+                "select document::text from integrations.public_endpoints where id=@id for update", db, tx))
+            {
+                before.Parameters.AddWithValue("id", id);
+                previousDocument = (string?)await before.ExecuteScalarAsync(ctx.RequestAborted);
+            }
+            if (previousDocument is null) return Results.NotFound();
+            var previous = JsonSerializer.Deserialize<PublishedEndpoint>(previousDocument, Json)!;
+            var contractChanged =
+                JsonSerializer.Serialize(previous with { Enabled = false }, Json) !=
+                JsonSerializer.Serialize(definition with { Enabled = false }, Json);
             await using var cmd = new NpgsqlCommand(
                 "update integrations.public_endpoints set slug=@slug,document=@doc,enabled=@enabled,updated_at=now() where id=@id", db, tx);
             AddDefinitionParams(cmd, definition);
             cmd.Parameters.AddWithValue("enabled", definition.Enabled);
             if (await cmd.ExecuteNonQueryAsync(ctx.RequestAborted) == 0)
                 return Results.NotFound();
-            await using var revoke = new NpgsqlCommand(
-                "update integrations.public_keys set active=false where endpoint_id=@id and active=true", db, tx);
-            revoke.Parameters.AddWithValue("id", id);
-            await revoke.ExecuteNonQueryAsync(ctx.RequestAborted);
+            if (contractChanged)
+            {
+                await using var unlink = new NpgsqlCommand(
+                    "delete from integrations.public_key_endpoints where endpoint_id=@id", db, tx);
+                unlink.Parameters.AddWithValue("id", id);
+                await unlink.ExecuteNonQueryAsync(ctx.RequestAborted);
+            }
             await tx.CommitAsync(ctx.RequestAborted);
             return Results.Ok(definition);
         });
@@ -139,7 +157,7 @@ public static class ThirdPartyApiEndpoints
             if (!Authorized(ctx)) return Results.Forbid();
             await using var db = await Open(cfg, ctx.RequestAborted);
             await using var cmd = new NpgsqlCommand(
-                "select id,label,prefix,active,expires_at,max_per_minute,created_at,last_used_at from integrations.public_keys where endpoint_id=@id order by created_at desc", db);
+                "select k.id,k.label,k.prefix,k.active,k.expires_at,k.max_per_minute,k.created_at,k.last_used_at from integrations.public_keys k join integrations.public_key_endpoints l on l.key_id=k.id where l.endpoint_id=@id order by k.created_at desc", db);
             cmd.Parameters.AddWithValue("id", id);
             await using var r = await cmd.ExecuteReaderAsync(ctx.RequestAborted);
             var keys = new List<object>();
@@ -165,20 +183,121 @@ public static class ThirdPartyApiEndpoints
                 if (await check.ExecuteScalarAsync(ctx.RequestAborted) is not true)
                     return Results.BadRequest(new { message = "Publicá el endpoint antes de generar una clave." });
             }
+            // Backward compatible legacy issuance: the same key is also registered in the link table.
             var secret = "dh_ext_" + Convert.ToHexString(RandomNumberGenerator.GetBytes(32)).ToLowerInvariant();
-            var hash = Sha(secret);
             var keyId = Guid.NewGuid();
-            await using var cmd = new NpgsqlCommand(
-                "insert into integrations.public_keys(id,endpoint_id,label,prefix,secret_hash,expires_at,max_per_minute) values(@id,@ep,@label,@prefix,@hash,@expires,@limit)", db);
-            cmd.Parameters.AddWithValue("id", keyId);
-            cmd.Parameters.AddWithValue("ep", id);
+            await using var tx = await db.BeginTransactionAsync(ctx.RequestAborted);
+            await using (var cmd = new NpgsqlCommand(
+                "insert into integrations.public_keys(id,endpoint_id,label,prefix,secret_hash,expires_at,max_per_minute) values(@id,@ep,@label,@prefix,@hash,@expires,@limit)", db, tx))
+            {
+                cmd.Parameters.AddWithValue("id", keyId);
+                cmd.Parameters.AddWithValue("ep", id);
+                cmd.Parameters.AddWithValue("label", request.Label.Trim());
+                cmd.Parameters.AddWithValue("prefix", secret[..15]);
+                cmd.Parameters.AddWithValue("hash", Sha(secret));
+                cmd.Parameters.AddWithValue("expires", DateTime.UtcNow.AddDays(request.ExpiresInDays));
+                cmd.Parameters.AddWithValue("limit", request.MaxRequestsPerMinute);
+                await cmd.ExecuteNonQueryAsync(ctx.RequestAborted);
+            }
+            await using (var link = new NpgsqlCommand(
+                "insert into integrations.public_key_endpoints(key_id,endpoint_id) values(@key,@endpoint)", db, tx))
+            {
+                link.Parameters.AddWithValue("key", keyId);
+                link.Parameters.AddWithValue("endpoint", id);
+                await link.ExecuteNonQueryAsync(ctx.RequestAborted);
+            }
+            await tx.CommitAsync(ctx.RequestAborted);
+            return Results.Ok(new { id = keyId, apiKey = secret }); // Display only once.
+        });
+
+        // Keys belong to the consuming application, not to an API route.
+        admin.MapGet("/keys", async (HttpContext ctx, IConfiguration cfg) =>
+        {
+            if (!Authorized(ctx)) return Results.Forbid();
+            await using var db = await Open(cfg, ctx.RequestAborted);
+            await using var cmd = new NpgsqlCommand("""
+                select k.id,k.label,k.prefix,k.active,k.expires_at,k.max_per_minute,
+                       k.created_at,k.last_used_at,
+                       coalesce((select array_agg(l.endpoint_id order by l.endpoint_id)
+                           from integrations.public_key_endpoints l where l.key_id=k.id), ARRAY[]::uuid[])
+                from integrations.public_keys k order by k.created_at desc
+                """, db);
+            await using var reader = await cmd.ExecuteReaderAsync(ctx.RequestAborted);
+            var items = new List<object>();
+            while (await reader.ReadAsync(ctx.RequestAborted))
+                items.Add(new {
+                    id = reader.GetGuid(0), label = reader.GetString(1), prefix = reader.GetString(2),
+                    active = reader.GetBoolean(3), expiresAt = reader.GetDateTime(4),
+                    maxRequestsPerMinute = reader.GetInt32(5), createdAt = reader.GetDateTime(6),
+                    lastUsedAt = reader.IsDBNull(7) ? (DateTime?)null : reader.GetDateTime(7),
+                    endpointIds = reader.GetFieldValue<Guid[]>(8)
+                });
+            return Results.Ok(items);
+        });
+
+        admin.MapPost("/keys", async (HttpContext ctx, IConfiguration cfg, IssueKeyRequest request) =>
+        {
+            if (!Authorized(ctx)) return Results.Forbid();
+            if (string.IsNullOrWhiteSpace(request.Label) || request.Label.Length > 100 ||
+                request.ExpiresInDays is < 1 or > 365 || request.MaxRequestsPerMinute is < 1 or > 300)
+                return Results.BadRequest(new { message = "Nombre, vencimiento o cuota inválidos." });
+            var secret = "dh_ext_" + Convert.ToHexString(RandomNumberGenerator.GetBytes(32)).ToLowerInvariant();
+            var id = Guid.NewGuid();
+            await using var db = await Open(cfg, ctx.RequestAborted);
+            await using var cmd = new NpgsqlCommand("""
+                insert into integrations.public_keys(id,endpoint_id,label,prefix,secret_hash,expires_at,max_per_minute)
+                values (@id,NULL,@label,@prefix,@hash,@expires,@limit)
+                """, db);
+            cmd.Parameters.AddWithValue("id", id);
             cmd.Parameters.AddWithValue("label", request.Label.Trim());
             cmd.Parameters.AddWithValue("prefix", secret[..15]);
-            cmd.Parameters.AddWithValue("hash", hash);
+            cmd.Parameters.AddWithValue("hash", Sha(secret));
             cmd.Parameters.AddWithValue("expires", DateTime.UtcNow.AddDays(request.ExpiresInDays));
             cmd.Parameters.AddWithValue("limit", request.MaxRequestsPerMinute);
             await cmd.ExecuteNonQueryAsync(ctx.RequestAborted);
-            return Results.Ok(new { id = keyId, apiKey = secret }); // Display only once.
+            return Results.Ok(new { id, apiKey = secret });
+        });
+
+        admin.MapPut("/keys/{id:guid}/endpoints",
+            async (HttpContext ctx, IConfiguration cfg, Guid id, KeyEndpointLinksRequest request) =>
+        {
+            if (!Authorized(ctx)) return Results.Forbid();
+            if (request.EndpointIds is null || request.EndpointIds.Length > 100 ||
+                request.EndpointIds.Distinct().Count() != request.EndpointIds.Length)
+                return Results.BadRequest(new { message = "Seleccioná hasta 100 APIs distintas." });
+            await using var db = await Open(cfg, ctx.RequestAborted);
+            await using var tx = await db.BeginTransactionAsync(ctx.RequestAborted);
+            await using (var checkKey = new NpgsqlCommand(
+                "select 1 from integrations.public_keys where id=@id and active=true for update", db, tx))
+            {
+                checkKey.Parameters.AddWithValue("id", id);
+                if (await checkKey.ExecuteScalarAsync(ctx.RequestAborted) is null)
+                    return Results.NotFound();
+            }
+            if (request.EndpointIds.Length > 0)
+            {
+                await using var validate = new NpgsqlCommand(
+                    "select count(*) from integrations.public_endpoints where id=any(@ids)", db, tx);
+                validate.Parameters.AddWithValue("ids", request.EndpointIds);
+                if ((long)(await validate.ExecuteScalarAsync(ctx.RequestAborted) ?? 0L) != request.EndpointIds.Length)
+                    return Results.BadRequest(new { message = "Una o más APIs no existen." });
+            }
+            await using (var clear = new NpgsqlCommand(
+                "delete from integrations.public_key_endpoints where key_id=@id", db, tx))
+            {
+                clear.Parameters.AddWithValue("id", id);
+                await clear.ExecuteNonQueryAsync(ctx.RequestAborted);
+            }
+            if (request.EndpointIds.Length > 0)
+            {
+                await using var attach = new NpgsqlCommand(
+                    "insert into integrations.public_key_endpoints(key_id,endpoint_id) select @id, unnest(@ids::uuid[])", db, tx);
+                attach.Parameters.AddWithValue("id", id);
+                attach.Parameters.AddWithValue("ids", request.EndpointIds);
+                await attach.ExecuteNonQueryAsync(ctx.RequestAborted);
+            }
+            await tx.CommitAsync(ctx.RequestAborted);
+            return Results.NoContent();
         });
 
         admin.MapDelete("/keys/{id:guid}", async (HttpContext ctx, IConfiguration cfg, Guid id) =>
@@ -188,6 +307,140 @@ public static class ThirdPartyApiEndpoints
             await using var cmd = new NpgsqlCommand("update integrations.public_keys set active=false where id=@id", db);
             cmd.Parameters.AddWithValue("id", id);
             return await cmd.ExecuteNonQueryAsync(ctx.RequestAborted) == 0 ? Results.NotFound() : Results.NoContent();
+        });
+
+        // Private preview: GET only, with the administrator's own JWT and scopes.
+        // No API Key, published endpoint, system identity, or mutation is required.
+        admin.MapPost("/preview", async (HttpContext ctx, IConfiguration cfg,
+            IOptions<GatewayOptions> gateway, IHttpClientFactory clients, PreviewRequest request) =>
+        {
+            if (!Authorized(ctx)) return Results.Forbid();
+            if (request.Endpoint is null)
+                return Results.BadRequest(new { message = "Falta el contrato de la API." });
+            var definition = request.Endpoint with { Enabled = false };
+            var target = ResolveTarget(definition.Target, cfg, gateway.Value);
+            if (target is null || target.Method != "GET")
+                return Results.BadRequest(new { message = "La previsualización solo permite operaciones GET." });
+            var invalid = Validate(definition, cfg, gateway.Value);
+            if (invalid is not null) return Results.BadRequest(new { message = invalid });
+            var registered = gateway.Value.Routes.FirstOrDefault(r =>
+                r.Prefix.Equals("/api/" + target.Service, StringComparison.OrdinalIgnoreCase));
+            if (registered is null || !Uri.TryCreate(registered.Destination, UriKind.Absolute, out var upstream) ||
+                upstream.Scheme is not ("http" or "https") || !string.IsNullOrEmpty(upstream.UserInfo))
+                return Results.BadRequest(new { message = "El servicio de destino no está registrado." });
+            var parameters = request.Parameters ?? new Dictionary<string, JsonElement>();
+            if (parameters.Count > 100 || parameters.Keys.Any(k => !definition.Inputs.Any(f => f.Public == k)))
+                return Results.BadRequest(new { message = "La prueba contiene parámetros no publicados." });
+            var pathValues = new Dictionary<string, string>(StringComparer.Ordinal);
+            var queries = new List<string>();
+            foreach (var field in definition.Inputs)
+            {
+                if (!parameters.TryGetValue(field.Public, out var node) ||
+                    node.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined)
+                {
+                    if (field.Required)
+                        return Results.BadRequest(new { message = "Falta el parámetro " + field.Public });
+                    continue;
+                }
+                var elements = node.ValueKind == JsonValueKind.Array
+                    ? node.EnumerateArray().ToArray() : [node];
+                if (elements.Length > 100) return Results.BadRequest(new { message = "Demasiados valores." });
+                foreach (var element in elements)
+                {
+                    if (element.ValueKind is not (JsonValueKind.String or JsonValueKind.Number or
+                        JsonValueKind.True or JsonValueKind.False))
+                        return Results.BadRequest(new { message = "Solo se aceptan parámetros GET simples." });
+                    var value = element.ToString();
+                    if (value.Length > 2048) return Results.BadRequest(new { message = "Parámetro demasiado largo." });
+                    if (definition.Target.StartsWith("route.", StringComparison.Ordinal) &&
+                        field.Internal.StartsWith("path.", StringComparison.Ordinal))
+                    {
+                        if (elements.Length != 1)
+                            return Results.BadRequest(new { message = "El parámetro de ruta debe ser único." });
+                        pathValues[field.Internal[5..]] = value;
+                    }
+                    else
+                    {
+                        var name = definition.Target.StartsWith("route.", StringComparison.Ordinal) &&
+                            field.Internal.StartsWith("query.", StringComparison.Ordinal)
+                            ? field.Internal[6..] : field.Internal;
+                        queries.Add(Uri.EscapeDataString(name) + "=" + Uri.EscapeDataString(value));
+                    }
+                }
+            }
+            string? suffix;
+            if (definition.Target.StartsWith("route.", StringComparison.Ordinal))
+            {
+                if (!string.IsNullOrWhiteSpace(request.Id))
+                    return Results.BadRequest(new { message = "Usá los parámetros declarados de la ruta." });
+                suffix = ThirdPartyRouteDiscovery.BuildPath(target.Path, pathValues);
+            }
+            else
+            {
+                var requestedId = request.Id?.Trim();
+                var requiresId = target.Path.Contains("{id}", StringComparison.Ordinal);
+                if (requiresId && (requestedId is null || !Identifier.IsMatch(requestedId)))
+                    return Results.BadRequest(new { message = "Ingresá el identificador del registro." });
+                if (!requiresId && !string.IsNullOrWhiteSpace(requestedId))
+                    return Results.BadRequest(new { message = "La ruta no requiere identificador." });
+                suffix = target.Path.Replace("{id}", Uri.EscapeDataString(requestedId ?? ""), StringComparison.Ordinal)
+                    .Replace("{catalogGroupSlug}", Uri.EscapeDataString(target.CatalogSlug ?? ""), StringComparison.Ordinal);
+            }
+            if (suffix is null) return Results.BadRequest(new { message = "Faltan parámetros de ruta." });
+            if (registered.StripPrefix) suffix = suffix[registered.Prefix.Length..];
+            var destination = registered.Destination.TrimEnd('/') + suffix +
+                (queries.Count > 0 ? "?" + string.Join("&", queries) : "");
+            if (!Uri.TryCreate(destination, UriKind.Absolute, out var uri) ||
+                uri.Scheme is not ("http" or "https"))
+                return Results.BadRequest(new { message = "Destino inválido." });
+
+            var authorization = ctx.Request.Headers.Authorization.ToString();
+            if (!authorization.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
+                return Results.Unauthorized();
+            using var outgoing = new HttpRequestMessage(HttpMethod.Get, uri);
+            outgoing.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue(
+                "Bearer", authorization[7..].Trim());
+            outgoing.Headers.TryAddWithoutValidation("X-Correlation-Id", ctx.TraceIdentifier);
+            try
+            {
+                using var response = await clients.CreateClient("third-party-upstream").SendAsync(
+                    outgoing, HttpCompletionOption.ResponseHeadersRead, ctx.RequestAborted);
+                if (response.Content.Headers.ContentLength is > 2_000_000)
+                    return Results.Json(new { status = 502, message = "Respuesta demasiado grande para previsualizar." });
+                await using var stream = await response.Content.ReadAsStreamAsync(ctx.RequestAborted);
+                using var buffer = new MemoryStream();
+                var bytes = new byte[16_384];
+                int count;
+                while ((count = await stream.ReadAsync(bytes, ctx.RequestAborted)) > 0)
+                {
+                    if (buffer.Length + count > 2_000_000)
+                        return Results.Json(new { status = 502, message = "Respuesta demasiado grande para previsualizar." });
+                    buffer.Write(bytes, 0, count);
+                }
+                if (!response.IsSuccessStatusCode)
+                    return Results.Ok(new { status = (int)response.StatusCode,
+                        message = "El servicio rechazó la solicitud. Comprobá tus permisos de lectura.", data = (object?)null });
+                JsonNode? parsed;
+                try { parsed = JsonNode.Parse(buffer.ToArray()); }
+                catch (JsonException) { return Results.Json(new { status = 502, message = "El servicio no devolvió JSON." }); }
+                var data = GetNode(parsed, definition.ResponseRoot);
+                if (string.IsNullOrWhiteSpace(definition.ResponseRoot) &&
+                    (target.Code.StartsWith("config-catalog-", StringComparison.Ordinal) ||
+                     target.Code is "pricing-rate-detail" or "pricing-usd-crc" or "pricing-rate-exchange-eur-usd"))
+                    data = GetNode(parsed, "data") ?? parsed;
+                JsonNode projected = data is JsonArray array
+                    ? new JsonArray(array.Select(row => (JsonNode?)Project(row, definition.Outputs)).ToArray())
+                    : Project(data, definition.Outputs);
+                return Results.Ok(new { status = (int)response.StatusCode, data = projected });
+            }
+            catch (HttpRequestException)
+            {
+                return Results.Json(new { status = 502, message = "Servicio interno no disponible." });
+            }
+            catch (TaskCanceledException) when (!ctx.RequestAborted.IsCancellationRequested)
+            {
+                return Results.Json(new { status = 504, message = "Se agotó el tiempo de respuesta." });
+            }
         });
 
         // Third parties authenticate exclusively with X-Api-Key, never with Dhole user JWT.
@@ -225,7 +478,7 @@ public static class ThirdPartyApiEndpoints
                     return Results.BadRequest(new { message = "Se requiere un identificador." });
 
                 await using var keyCmd = new NpgsqlCommand(
-                    "select id,max_per_minute from integrations.public_keys where endpoint_id=@ep and secret_hash=@hash and active=true and expires_at>now()", db);
+                    "select k.id,k.max_per_minute from integrations.public_keys k join integrations.public_key_endpoints l on l.key_id=k.id where l.endpoint_id=@ep and k.secret_hash=@hash and k.active=true and k.expires_at>now()", db);
                 keyCmd.Parameters.AddWithValue("ep", definitionId);
                 keyCmd.Parameters.AddWithValue("hash", Sha(rawKey));
                 Guid keyId;

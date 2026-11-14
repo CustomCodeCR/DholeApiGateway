@@ -73,7 +73,7 @@ public static class ThirdPartyRouteDiscovery
 
     public static async Task<RouteDiscoveryResult> DiscoverAsync(
         string service, IConfiguration cfg, GatewayOptions gateway,
-        IHttpClientFactory clients, CancellationToken ct)
+        IHttpClientFactory clients, string? adminAuthorization, CancellationToken ct)
     {
         var route = gateway.Routes.FirstOrDefault(r =>
             r.Prefix.Equals("/api/" + service, StringComparison.OrdinalIgnoreCase));
@@ -81,6 +81,60 @@ public static class ThirdPartyRouteDiscovery
         if (!Uri.TryCreate(route.Destination, UriKind.Absolute, out var root) ||
             root.Scheme is not ("http" or "https") || !string.IsNullOrEmpty(root.UserInfo))
             return new(service, false, "Destino interno no permitido.", []);
+
+        // Prefer the authenticated runtime endpoint registry. Unlike Swagger, it exists
+        // in production and reflects the actually deployed minimal API route table.
+        // The caller's admin JWT is forwarded ONLY to the fixed, registered service root.
+        if (!string.IsNullOrWhiteSpace(adminAuthorization) &&
+            adminAuthorization.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
+        {
+            try
+            {
+                using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                timeout.CancelAfter(TimeSpan.FromSeconds(5));
+                var internalUri = new Uri(root.GetLeftPart(UriPartial.Authority) + "/api/internal/third-party-route-catalog");
+                using var req = new HttpRequestMessage(HttpMethod.Get, internalUri);
+                req.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue(
+                    "Bearer", adminAuthorization[7..].Trim());
+                using var response = await clients.CreateClient("third-party-upstream")
+                    .SendAsync(req, HttpCompletionOption.ResponseHeadersRead, timeout.Token);
+                if (response.IsSuccessStatusCode && response.Content.Headers.ContentLength is not > 2_000_000)
+                {
+                    var raw = await response.Content.ReadAsStringAsync(timeout.Token);
+                    if (raw.Length <= 2_000_000 && JsonNode.Parse(raw) is JsonArray entries)
+                    {
+                        var discovered = new Dictionary<string, ApprovedTarget>(StringComparer.Ordinal);
+                        foreach (var entry in entries.OfType<JsonObject>())
+                        {
+                            var method = entry["method"]?.ToString()?.ToUpperInvariant() ?? "";
+                            var actualPath = entry["path"]?.ToString() ?? "";
+                            if (!Verbs.Contains(method) || !actualPath.StartsWith('/')) continue;
+                            string normalized;
+                            var internalRoot = root.AbsolutePath.TrimEnd('/');
+                            if (route.StripPrefix && internalRoot.Length > 0 &&
+                                actualPath.StartsWith(internalRoot + "/", StringComparison.OrdinalIgnoreCase))
+                                normalized = route.Prefix + actualPath[internalRoot.Length..];
+                            else
+                                normalized = actualPath;
+                            var target = Resolve(new RouteSelectionRequest(service, method, normalized), cfg, gateway);
+                            if (target is null) continue;
+                            // Avoid advertising the catalogue itself, auth bootstrap, health probes and web sockets.
+                            if (normalized.Contains("/third-party-route-catalog", StringComparison.OrdinalIgnoreCase) ||
+                                normalized.StartsWith("/api/" + service + "/health", StringComparison.OrdinalIgnoreCase))
+                                continue;
+                            discovered[target.Code] = target with { Description = method + " " + normalized };
+                        }
+                        return new(service, true,
+                            $"{discovered.Count} rutas HTTP detectadas en el servicio desplegado.",
+                            discovered.Values.OrderBy(x => x.Path).ThenBy(x => x.Method).ToArray());
+                    }
+                }
+            }
+            catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or System.Text.Json.JsonException or InvalidOperationException)
+            {
+                if (ct.IsCancellationRequested) throw;
+            }
+        }
 
         // Fixed well-known metadata URLs: no user-provided destination, redirect or credentials.
         foreach (var relative in new[] { "swagger/v1/swagger.json", "openapi/v1.json" })

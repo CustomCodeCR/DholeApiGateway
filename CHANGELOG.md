@@ -1,3 +1,10 @@
+## [1.8.0] - 2026-11-14 (API Keys independientes y preview GET seguro)
+
+- DH-20261114-API-KEYS-PREVIEW-154
+- MINOR: API Keys independientes con vínculo muchos-a-muchos a múltiples APIs, revocación y migración compatible con claves históricas.
+- La previsualización privada solo admite GET con los permisos del JWT administrativo; no precisa publicar ni configurar claves y no permite mutaciones.
+- La edición del contrato desvincula únicamente esa ruta cuando cambia el alcance, sin revocar las demás autorizaciones de la clave; habilitar/deshabilitar preserva vínculos.
+
 ## [1.7.0] - 2026-11-14 (API Manager universal route discovery)
 
 - MINOR: descubre el inventario protegido de rutas REST de los servicios registrados en el Gateway y habilita la selección/mapeo explícito de contratos.

@@ -7,5 +7,5 @@ namespace Dhole.ApiGateway.ThirdParty.Migrations;
 public sealed class ThirdPartyDbContextModelSnapshot : ModelSnapshot
 {
     protected override void BuildModel(ModelBuilder modelBuilder)
-        => ThirdPartyInitialModel.Build(modelBuilder);
+        => ThirdPartyCurrentModel.Build(modelBuilder);
 }

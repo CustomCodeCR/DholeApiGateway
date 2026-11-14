@@ -8,11 +8,12 @@ public sealed class ThirdPartyDbContext(DbContextOptions<ThirdPartyDbContext> op
 {
     public DbSet<ThirdPartyEndpointRow> Endpoints => Set<ThirdPartyEndpointRow>();
     public DbSet<ThirdPartyKeyRow> Keys => Set<ThirdPartyKeyRow>();
+    public DbSet<ThirdPartyKeyEndpointRow> KeyEndpoints => Set<ThirdPartyKeyEndpointRow>();
     public DbSet<ThirdPartyUsageRow> Usage => Set<ThirdPartyUsageRow>();
     public DbSet<ThirdPartyAuditRow> Audit => Set<ThirdPartyAuditRow>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
-        => ThirdPartyInitialModel.Build(modelBuilder);
+        => ThirdPartyCurrentModel.Build(modelBuilder);
 }
 
 public sealed class ThirdPartyEndpointRow
@@ -27,7 +28,7 @@ public sealed class ThirdPartyEndpointRow
 public sealed class ThirdPartyKeyRow
 {
     public Guid Id { get; set; }
-    public Guid EndpointId { get; set; }
+    public Guid? EndpointId { get; set; }
     public string Label { get; set; } = "";
     public string Prefix { get; set; } = "";
     public string SecretHash { get; set; } = "";
@@ -36,6 +37,14 @@ public sealed class ThirdPartyKeyRow
     public int MaxPerMinute { get; set; }
     public DateTime CreatedAt { get; set; }
     public DateTime? LastUsedAt { get; set; }
+    public ThirdPartyEndpointRow? Endpoint { get; set; }
+}
+
+public sealed class ThirdPartyKeyEndpointRow
+{
+    public Guid KeyId { get; set; }
+    public Guid EndpointId { get; set; }
+    public ThirdPartyKeyRow Key { get; set; } = null!;
     public ThirdPartyEndpointRow Endpoint { get; set; } = null!;
 }
 
@@ -84,7 +93,7 @@ internal static class ThirdPartyInitialModel
             b.ToTable("public_keys");
             b.HasKey(x => x.Id).HasName("public_keys_pkey");
             b.Property(x => x.Id).HasColumnName("id").ValueGeneratedNever();
-            b.Property(x => x.EndpointId).HasColumnName("endpoint_id");
+            b.Property(x => x.EndpointId).HasColumnName("endpoint_id").IsRequired();
             b.HasOne(x => x.Endpoint).WithMany().HasForeignKey(x => x.EndpointId)
                 .HasConstraintName("public_keys_endpoint_id_fkey").OnDelete(DeleteBehavior.NoAction);
             b.Property(x => x.Label).HasColumnName("label").HasColumnType("text").IsRequired();
@@ -125,6 +134,31 @@ internal static class ThirdPartyInitialModel
                 .HasColumnType("timestamp with time zone").HasDefaultValueSql("now()");
             b.HasIndex(x => new { x.EndpointId, x.CreatedAt })
                 .HasDatabaseName("idx_public_audit_endpoint").IsDescending(false, true);
+        });
+    }
+}
+
+    
+// Current model: preserves the initial migration while enabling separately issued
+// credentials linked to zero or more APIs, including draft APIs.
+internal static class ThirdPartyCurrentModel
+{
+    public static void Build(ModelBuilder modelBuilder)
+    {
+        ThirdPartyInitialModel.Build(modelBuilder);
+        modelBuilder.Entity<ThirdPartyKeyRow>()
+            .Property(x => x.EndpointId).IsRequired(false);
+        modelBuilder.Entity<ThirdPartyKeyEndpointRow>(b =>
+        {
+            b.ToTable("public_key_endpoints");
+            b.HasKey(x => new { x.KeyId, x.EndpointId }).HasName("public_key_endpoints_pkey");
+            b.Property(x => x.KeyId).HasColumnName("key_id");
+            b.Property(x => x.EndpointId).HasColumnName("endpoint_id");
+            b.HasOne(x => x.Key).WithMany().HasForeignKey(x => x.KeyId)
+                .HasConstraintName("public_key_endpoints_key_id_fkey").OnDelete(DeleteBehavior.Cascade);
+            b.HasOne(x => x.Endpoint).WithMany().HasForeignKey(x => x.EndpointId)
+                .HasConstraintName("public_key_endpoints_endpoint_id_fkey").OnDelete(DeleteBehavior.Cascade);
+            b.HasIndex(x => x.EndpointId).HasDatabaseName("ix_public_key_endpoints_endpoint_id");
         });
     }
 }

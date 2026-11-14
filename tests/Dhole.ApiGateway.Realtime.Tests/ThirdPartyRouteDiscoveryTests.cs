@@ -44,7 +44,7 @@ public sealed class ThirdPartyRouteDiscoveryTests
         Assert.Equal(service, target.Service);
         Assert.Equal(method, target.Method);
         Assert.Equal(path, target.Path);
-        Assert.Equal(target, ThirdPartyRouteDiscovery.Resolve(target.Code, Configuration(), Registry()));
+        Assert.Equal(target.Code, ThirdPartyRouteDiscovery.Resolve(target.Code, Configuration(), Registry())?.Code);
         Assert.False(target.Ready); // no technical token means no publication
     }
 

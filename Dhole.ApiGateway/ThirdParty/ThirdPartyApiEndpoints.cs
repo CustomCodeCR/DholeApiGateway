@@ -309,6 +309,140 @@ public static class ThirdPartyApiEndpoints
             return await cmd.ExecuteNonQueryAsync(ctx.RequestAborted) == 0 ? Results.NotFound() : Results.NoContent();
         });
 
+        // Private preview: GET only, with the administrator's own JWT and scopes.
+        // No API Key, published endpoint, system identity, or mutation is required.
+        admin.MapPost("/preview", async (HttpContext ctx, IConfiguration cfg,
+            IOptions<GatewayOptions> gateway, IHttpClientFactory clients, PreviewRequest request) =>
+        {
+            if (!Authorized(ctx)) return Results.Forbid();
+            if (request.Endpoint is null)
+                return Results.BadRequest(new { message = "Falta el contrato de la API." });
+            var definition = request.Endpoint with { Enabled = false };
+            var target = ResolveTarget(definition.Target, cfg, gateway.Value);
+            if (target is null || target.Method != "GET")
+                return Results.BadRequest(new { message = "La previsualización solo permite operaciones GET." });
+            var invalid = Validate(definition, cfg, gateway.Value);
+            if (invalid is not null) return Results.BadRequest(new { message = invalid });
+            var registered = gateway.Value.Routes.FirstOrDefault(r =>
+                r.Prefix.Equals("/api/" + target.Service, StringComparison.OrdinalIgnoreCase));
+            if (registered is null || !Uri.TryCreate(registered.Destination, UriKind.Absolute, out var upstream) ||
+                upstream.Scheme is not ("http" or "https") || !string.IsNullOrEmpty(upstream.UserInfo))
+                return Results.BadRequest(new { message = "El servicio de destino no está registrado." });
+            var parameters = request.Parameters ?? new Dictionary<string, JsonElement>();
+            if (parameters.Count > 100 || parameters.Keys.Any(k => !definition.Inputs.Any(f => f.Public == k)))
+                return Results.BadRequest(new { message = "La prueba contiene parámetros no publicados." });
+            var pathValues = new Dictionary<string, string>(StringComparer.Ordinal);
+            var queries = new List<string>();
+            foreach (var field in definition.Inputs)
+            {
+                if (!parameters.TryGetValue(field.Public, out var node) ||
+                    node.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined)
+                {
+                    if (field.Required)
+                        return Results.BadRequest(new { message = "Falta el parámetro " + field.Public });
+                    continue;
+                }
+                var elements = node.ValueKind == JsonValueKind.Array
+                    ? node.EnumerateArray().ToArray() : [node];
+                if (elements.Length > 100) return Results.BadRequest(new { message = "Demasiados valores." });
+                foreach (var element in elements)
+                {
+                    if (element.ValueKind is not (JsonValueKind.String or JsonValueKind.Number or
+                        JsonValueKind.True or JsonValueKind.False))
+                        return Results.BadRequest(new { message = "Solo se aceptan parámetros GET simples." });
+                    var value = element.ToString();
+                    if (value.Length > 2048) return Results.BadRequest(new { message = "Parámetro demasiado largo." });
+                    if (definition.Target.StartsWith("route.", StringComparison.Ordinal) &&
+                        field.Internal.StartsWith("path.", StringComparison.Ordinal))
+                    {
+                        if (elements.Length != 1)
+                            return Results.BadRequest(new { message = "El parámetro de ruta debe ser único." });
+                        pathValues[field.Internal[5..]] = value;
+                    }
+                    else
+                    {
+                        var name = definition.Target.StartsWith("route.", StringComparison.Ordinal) &&
+                            field.Internal.StartsWith("query.", StringComparison.Ordinal)
+                            ? field.Internal[6..] : field.Internal;
+                        queries.Add(Uri.EscapeDataString(name) + "=" + Uri.EscapeDataString(value));
+                    }
+                }
+            }
+            string? suffix;
+            if (definition.Target.StartsWith("route.", StringComparison.Ordinal))
+            {
+                if (!string.IsNullOrWhiteSpace(request.Id))
+                    return Results.BadRequest(new { message = "Usá los parámetros declarados de la ruta." });
+                suffix = ThirdPartyRouteDiscovery.BuildPath(target.Path, pathValues);
+            }
+            else
+            {
+                var requestedId = request.Id?.Trim();
+                var requiresId = target.Path.Contains("{id}", StringComparison.Ordinal);
+                if (requiresId && (requestedId is null || !Identifier.IsMatch(requestedId)))
+                    return Results.BadRequest(new { message = "Ingresá el identificador del registro." });
+                if (!requiresId && !string.IsNullOrWhiteSpace(requestedId))
+                    return Results.BadRequest(new { message = "La ruta no requiere identificador." });
+                suffix = target.Path.Replace("{id}", Uri.EscapeDataString(requestedId ?? ""), StringComparison.Ordinal)
+                    .Replace("{catalogGroupSlug}", Uri.EscapeDataString(target.CatalogSlug ?? ""), StringComparison.Ordinal);
+            }
+            if (suffix is null) return Results.BadRequest(new { message = "Faltan parámetros de ruta." });
+            if (registered.StripPrefix) suffix = suffix[registered.Prefix.Length..];
+            var destination = registered.Destination.TrimEnd('/') + suffix +
+                (queries.Count > 0 ? "?" + string.Join("&", queries) : "");
+            if (!Uri.TryCreate(destination, UriKind.Absolute, out var uri) ||
+                uri.Scheme is not ("http" or "https"))
+                return Results.BadRequest(new { message = "Destino inválido." });
+
+            var authorization = ctx.Request.Headers.Authorization.ToString();
+            if (!authorization.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
+                return Results.Unauthorized();
+            using var outgoing = new HttpRequestMessage(HttpMethod.Get, uri);
+            outgoing.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue(
+                "Bearer", authorization[7..].Trim());
+            outgoing.Headers.TryAddWithoutValidation("X-Correlation-Id", ctx.TraceIdentifier);
+            try
+            {
+                using var response = await clients.CreateClient("third-party-upstream").SendAsync(
+                    outgoing, HttpCompletionOption.ResponseHeadersRead, ctx.RequestAborted);
+                if (response.Content.Headers.ContentLength is > 2_000_000)
+                    return Results.Json(new { status = 502, message = "Respuesta demasiado grande para previsualizar." });
+                await using var stream = await response.Content.ReadAsStreamAsync(ctx.RequestAborted);
+                using var buffer = new MemoryStream();
+                var bytes = new byte[16_384];
+                int count;
+                while ((count = await stream.ReadAsync(bytes, ctx.RequestAborted)) > 0)
+                {
+                    if (buffer.Length + count > 2_000_000)
+                        return Results.Json(new { status = 502, message = "Respuesta demasiado grande para previsualizar." });
+                    buffer.Write(bytes, 0, count);
+                }
+                if (!response.IsSuccessStatusCode)
+                    return Results.Ok(new { status = (int)response.StatusCode,
+                        message = "El servicio rechazó la solicitud. Comprobá tus permisos de lectura.", data = (object?)null });
+                JsonNode? parsed;
+                try { parsed = JsonNode.Parse(buffer.ToArray()); }
+                catch (JsonException) { return Results.Json(new { status = 502, message = "El servicio no devolvió JSON." }); }
+                var data = GetNode(parsed, definition.ResponseRoot);
+                if (string.IsNullOrWhiteSpace(definition.ResponseRoot) &&
+                    (target.Code.StartsWith("config-catalog-", StringComparison.Ordinal) ||
+                     target.Code is "pricing-rate-detail" or "pricing-usd-crc" or "pricing-rate-exchange-eur-usd"))
+                    data = GetNode(parsed, "data") ?? parsed;
+                JsonNode projected = data is JsonArray array
+                    ? new JsonArray(array.Select(row => (JsonNode?)Project(row, definition.Outputs)).ToArray())
+                    : Project(data, definition.Outputs);
+                return Results.Ok(new { status = (int)response.StatusCode, data = projected });
+            }
+            catch (HttpRequestException)
+            {
+                return Results.Json(new { status = 502, message = "Servicio interno no disponible." });
+            }
+            catch (TaskCanceledException) when (!ctx.RequestAborted.IsCancellationRequested)
+            {
+                return Results.Json(new { status = 504, message = "Se agotó el tiempo de respuesta." });
+            }
+        });
+
         // Third parties authenticate exclusively with X-Api-Key, never with Dhole user JWT.
         // Versioned public API; preserve the legacy route for existing consumers.
         foreach (var externalRoute in new[] { "/api/external/{slug}/{id?}", "/api/external/v1/{slug}/{id?}" })

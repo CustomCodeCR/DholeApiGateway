@@ -1,3 +1,10 @@
+## [1.7.0] - 2026-11-14 (Dhole API Manager: descubrimiento de rutas)
+
+- MINOR: registra servicios y permite descubrir operaciones declaradas en OpenAPI sin publicar automáticamente rutas internas.
+- Permite diseñar APIs para rutas internas seleccionadas con mapeo de path/query/body y respuestas, credenciales por operación, API Keys e idempotencia.
+- Las rutas no documentadas pueden guardarse como borradores; requieren configuración específica y verificaciones para publicación externa.
+- El descubrimiento completo requiere que cada microservicio registre su inventario interno (ver bloqueos).
+
 ## [1.6.2] - 2026-11-14 (API Manager 1.55.0 synchronized release)
 
 - PATCH: sincroniza el registro de versiones con el release 1.55.0 para promoción coordinada.

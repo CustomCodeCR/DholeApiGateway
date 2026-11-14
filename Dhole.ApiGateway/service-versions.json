@@ -1,32 +1,32 @@
 {
   "schemaVersion": 1,
   "ecosystem": "Dhole",
-  "ecosystemVersion": "1.40.0",
-  "releaseId": "DH-20261111-API-MANAGER-110",
-  "source": "third-party-api-manager-coordinated-candidate",
+  "ecosystemVersion": "1.53.0",
+  "releaseId": "DH-20261114-API-MANAGER-PROMOTION-001",
+  "source": "api-manager-promotion-candidate",
   "services": [
     {
       "key": "gateway",
       "component": "DholeApiGateway",
-      "version": "1.6.0",
+      "version": "1.6.1",
       "repository": "CustomCodeCR/DholeApiGateway"
     },
     {
       "key": "auth",
       "component": "DholeAuthService",
-      "version": "1.4.0",
+      "version": "1.9.3",
       "repository": "CustomCodeCR/DholeAuthService"
     },
     {
       "key": "crm",
       "component": "DholeCRMService",
-      "version": "1.6.0",
+      "version": "1.31.0",
       "repository": "CustomCodeCR/DholeCRMService"
     },
     {
       "key": "config",
       "component": "DholeConfigService",
-      "version": "1.4.0",
+      "version": "1.4.1",
       "repository": "CustomCodeCR/DholeConfigService"
     },
     {
@@ -38,7 +38,7 @@
     {
       "key": "pricing",
       "component": "DholePricingService",
-      "version": "1.11.3",
+      "version": "1.18.2",
       "repository": "CustomCodeCR/DholePricingService"
     },
     {
@@ -62,7 +62,7 @@
     {
       "key": "dynamics-connector",
       "component": "DholeDynamicsConnectorService",
-      "version": "1.4.0",
+      "version": "1.4.1",
       "repository": "CustomCodeCR/DholeDynamicsConnectorService"
     },
     {
@@ -74,7 +74,7 @@
     {
       "key": "notifications",
       "component": "DholeNotificationsService",
-      "version": "1.4.0",
+      "version": "1.6.1",
       "repository": "CustomCodeCR/DholeNotificationsService"
     },
     {
@@ -92,13 +92,13 @@
     {
       "key": "web",
       "component": "DholeWeb",
-      "version": "1.40.0",
+      "version": "1.53.0",
       "repository": "CustomCodeCR/DholeWeb"
     },
     {
       "key": "system",
       "component": "DholeSystem",
-      "version": "1.14.2",
+      "version": "1.52.1",
       "repository": "CustomCodeCR/DholeSystem"
     }
   ]

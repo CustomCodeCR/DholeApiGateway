@@ -1,3 +1,14 @@
+## [1.6.2] - 2026-11-14 (API Manager 1.55.0 synchronized release)
+
+- MINOR respecto a master 1.5.3: API externa v1 con ocho catálogos de Config y Solicitudes de Tarifas, API Keys, mapeo por operación y alcance de solo lectura.
+- Corrige el registro de versiones para promoción coordinada 1.55.0; publica únicamente rutas aprobadas.
+
+## [1.6.1] - 2026-11-14 (Dhole API Manager promotion)
+
+- MINOR de funcionalidad acumulada respecto a master 1.5.3: rutas `/api/external/v1`, ocho catálogos GET de Config con slugs internos inmutables y mapeo de campos.
+- Preserva API Keys y solicitudes de tarifas existentes; operaciones deshabilitadas hasta asignar identidad técnica.
+- Coordinación de manifiesto global Dhole 1.53.0 y release candidato sin autorizar producción.
+
 ## [1.5.3] - 2026-11-11 (Dhole Pricing seller request history manifest)
 
 - PATCH DH-20261111-PRICING-SELLER-REQUEST-HISTORY-093: catálogo de versiones coordinado Pricing 1.11.3, Web 1.32.2 y Gateway 1.5.3; ecosistema 1.32.2. Sin cambios de routing, API REST ni SignalR.

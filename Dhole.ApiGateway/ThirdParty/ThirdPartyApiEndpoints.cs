@@ -24,6 +24,7 @@ public sealed record ApprovedTarget(string Code, string Service, string Method, 
 {
     // Only indicates whether an internal service credential was configured;
     // does not attest to its validity or to tenant-level authorization.
+    public string? CatalogSlug { get; init; }
     public bool Ready { get; init; }
     public IReadOnlyList<ThirdPartyFieldOption> InputFields { get; init; } = [];
     public IReadOnlyList<ThirdPartyFieldOption> OutputFields { get; init; } = [];
@@ -168,7 +169,10 @@ public static class ThirdPartyApiEndpoints
         });
 
         // Third parties authenticate exclusively with X-Api-Key, never with Dhole user JWT.
-        app.MapMethods("/api/external/{slug}/{id?}", SupportedMethods,
+        // Versioned public API; preserve the legacy route for existing consumers.
+        foreach (var externalRoute in new[] { "/api/external/{slug}/{id?}", "/api/external/v1/{slug}/{id?}" })
+        {
+        app.MapMethods(externalRoute, SupportedMethods,
             async (HttpContext ctx, IConfiguration cfg, IOptions<GatewayOptions> gateway,
                 IHttpClientFactory clients, string slug, string? id) =>
             {
@@ -233,7 +237,9 @@ public static class ThirdPartyApiEndpoints
                 var serviceCredential = cfg["ThirdParty:ServiceTokens:" + target.Code];
                 if (route is null || string.IsNullOrWhiteSpace(serviceCredential))
                     return Results.Problem("La identidad interna de integración no está configurada.", statusCode: 503);
-                var suffix = target.Path.Replace("{id}", Uri.EscapeDataString(id ?? ""), StringComparison.Ordinal);
+                // Catalog slugs are fixed server-side: callers cannot enumerate unrelated catalogs.
+                var suffix = target.Path.Replace("{id}", Uri.EscapeDataString(id ?? ""), StringComparison.Ordinal)
+                    .Replace("{catalogGroupSlug}", Uri.EscapeDataString(target.CatalogSlug ?? ""), StringComparison.Ordinal);
                 if (route.StripPrefix) suffix = suffix[prefix.Length..];
                 var destination = route.Destination.TrimEnd('/') + suffix;
                 if (!Uri.TryCreate(destination, UriKind.Absolute, out var uri) ||
@@ -323,6 +329,9 @@ public static class ThirdPartyApiEndpoints
                         try { parsed = JsonNode.Parse(raw); }
                         catch (JsonException) { return Results.Problem("Respuesta no JSON del servicio interno.", statusCode: 502); }
                         var data = GetNode(parsed, definition.ResponseRoot);
+                        if (string.IsNullOrWhiteSpace(definition.ResponseRoot) &&
+                            target.Code.StartsWith("config-catalog-", StringComparison.Ordinal))
+                            data = GetNode(parsed, "data") ?? parsed;
                         // Pricing uses ApiResponse<T> for details, rate creation and exchange rates.
                         // A plain null ResponseRoot on older contracts should still unwrap them.
                         if (string.IsNullOrWhiteSpace(definition.ResponseRoot) &&
@@ -384,6 +393,7 @@ public static class ThirdPartyApiEndpoints
                     catch (NpgsqlException) { /* Integration response is not replaced by audit failures. */ }
                 }
             }).AllowAnonymous();
+        }
     }
 
     private static JsonNode? GetNode(JsonNode? node, string? path)
@@ -498,7 +508,11 @@ public static class ThirdPartyApiEndpoints
                         !t.Path.Contains("//", StringComparison.Ordinal) &&
                         Regex.IsMatch(t.Path, "^/api/[a-z-]+/[a-zA-Z0-9_/{}/.-]+$") &&
                         (t.Path.IndexOf('{') < 0 ||
-                         t.Path.EndsWith("/{id}", StringComparison.Ordinal)))
+                         t.Path.EndsWith("/{id}", StringComparison.Ordinal) ||
+                         (t.Service.Equals("config", StringComparison.OrdinalIgnoreCase) &&
+                          t.Path.Equals("/api/config/catalog-items/by-group/{catalogGroupSlug}", StringComparison.Ordinal) &&
+                          !string.IsNullOrWhiteSpace(t.CatalogSlug) &&
+                          Regex.IsMatch(t.CatalogSlug, "^[a-z0-9-]{2,64}$"))))
             .Select(t => t with {
                 Ready = !string.IsNullOrWhiteSpace(cfg["ThirdParty:ServiceTokens:" + t.Code]),
                 InputFields = ThirdPartyFieldCatalog.Inputs(t.Code),

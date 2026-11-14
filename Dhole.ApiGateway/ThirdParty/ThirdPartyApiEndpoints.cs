@@ -41,7 +41,7 @@ public static class ThirdPartyApiEndpoints
     private static readonly Regex Field = new("^[a-zA-Z][a-zA-Z0-9_]{0,79}$", RegexOptions.Compiled);
     private static readonly Regex Source = new("^[a-zA-Z][a-zA-Z0-9_.]{0,159}$", RegexOptions.Compiled);
     private static readonly Regex Identifier = new("^[a-zA-Z0-9_.-]{1,128}$", RegexOptions.Compiled);
-    private static readonly string[] SupportedMethods = ["GET", "POST", "PUT", "DELETE"];
+    private static readonly string[] SupportedMethods = ["GET", "POST", "PUT", "PATCH", "DELETE"];
     private static readonly HashSet<string> PublicServices = new(StringComparer.OrdinalIgnoreCase)
         { "pricing", "crm", "config", "reports", "srm", "operations" };
 
@@ -62,6 +62,28 @@ public static class ThirdPartyApiEndpoints
         admin.MapGet("/catalog", (HttpContext ctx, IConfiguration cfg) =>
             Authorized(ctx) ? Results.Ok(Targets(cfg)) : Results.Forbid());
 
+        // Read-only inventory: all registered Gateway service prefixes, not only Pricing/Config.
+        admin.MapGet("/services", (HttpContext ctx, IOptions<GatewayOptions> gateway) =>
+            Authorized(ctx) ? Results.Ok(ThirdPartyRouteDiscovery.Services(gateway.Value)) : Results.Forbid());
+
+        admin.MapGet("/discover/{service}", async (HttpContext ctx, string service, IConfiguration cfg,
+            IOptions<GatewayOptions> gateway, IHttpClientFactory clients) =>
+        {
+            if (!Authorized(ctx)) return Results.Forbid();
+            return Results.Ok(await ThirdPartyRouteDiscovery.DiscoverAsync(
+                service, cfg, gateway.Value, clients, ctx.Request.Headers.Authorization.ToString(), ctx.RequestAborted));
+        });
+
+        admin.MapPost("/resolve", (HttpContext ctx, IConfiguration cfg, IOptions<GatewayOptions> gateway,
+            RouteSelectionRequest selection) =>
+        {
+            if (!Authorized(ctx)) return Results.Forbid();
+            var target = ThirdPartyRouteDiscovery.Resolve(selection, cfg, gateway.Value);
+            return target is null
+                ? Results.BadRequest(new { message = "Ruta no válida o servicio sin conexión registrada en Gateway." })
+                : Results.Ok(target);
+        });
+
         admin.MapGet("/endpoints", async (HttpContext ctx, IConfiguration cfg) =>
         {
             if (!Authorized(ctx)) return Results.Forbid();
@@ -75,11 +97,11 @@ public static class ThirdPartyApiEndpoints
             return Results.Ok(definitions);
         });
 
-        admin.MapPost("/endpoints", async (HttpContext ctx, IConfiguration cfg, PublishedEndpoint input) =>
+        admin.MapPost("/endpoints", async (HttpContext ctx, IConfiguration cfg, IOptions<GatewayOptions> gateway, PublishedEndpoint input) =>
         {
             if (!Authorized(ctx)) return Results.Forbid();
             var definition = input with { Id = Guid.NewGuid(), Enabled = false };
-            var error = Validate(definition, cfg);
+            var error = Validate(definition, cfg, gateway.Value);
             if (error is not null) return Results.BadRequest(new { message = error });
             await using var db = await Open(cfg, ctx.RequestAborted);
             await using var cmd = new NpgsqlCommand(
@@ -89,11 +111,11 @@ public static class ThirdPartyApiEndpoints
             return Results.Created("/api/integrations/third-party/endpoints/" + definition.Id, definition);
         });
 
-        admin.MapPut("/endpoints/{id:guid}", async (HttpContext ctx, IConfiguration cfg, Guid id, PublishedEndpoint input) =>
+        admin.MapPut("/endpoints/{id:guid}", async (HttpContext ctx, IConfiguration cfg, IOptions<GatewayOptions> gateway, Guid id, PublishedEndpoint input) =>
         {
             if (!Authorized(ctx)) return Results.Forbid();
             var definition = input with { Id = id };
-            var error = Validate(definition, cfg);
+            var error = Validate(definition, cfg, gateway.Value);
             if (error is not null) return Results.BadRequest(new { message = error });
             await using var db = await Open(cfg, ctx.RequestAborted);
             // Treat edits as a new contract: old keys must not silently gain new capabilities.
@@ -194,12 +216,12 @@ public static class ThirdPartyApiEndpoints
                     definitionId = reader.GetGuid(0);
                     definition = JsonSerializer.Deserialize<PublishedEndpoint>(reader.GetString(1), Json)!;
                 }
-                var target = Targets(cfg).FirstOrDefault(t => t.Code == definition.Target);
+                var target = ResolveTarget(definition.Target, cfg, gateway.Value);
                 if (target is null || !string.Equals(ctx.Request.Method, target.Method, StringComparison.OrdinalIgnoreCase))
                     return Results.NotFound();
-                if (target.Path.Contains("{id}", StringComparison.Ordinal) != (id is not null))
+                if (!definition.Target.StartsWith("route.", StringComparison.Ordinal) && target.Path.Contains("{id}", StringComparison.Ordinal) != (id is not null))
                     return Results.BadRequest(new { message = "Identificador no válido para esta operación." });
-                if (target.Path.Contains("{id}", StringComparison.Ordinal) && id is null)
+                if (!definition.Target.StartsWith("route.", StringComparison.Ordinal) && target.Path.Contains("{id}", StringComparison.Ordinal) && id is null)
                     return Results.BadRequest(new { message = "Se requiere un identificador." });
 
                 await using var keyCmd = new NpgsqlCommand(
@@ -230,56 +252,49 @@ public static class ThirdPartyApiEndpoints
                         return Results.StatusCode(StatusCodes.Status429TooManyRequests);
                 }
 
-                // Only destinations already registered by Dhole Gateway are routable.
+                // External callers never choose a URL, service credential, or backend path.
+                // All destination roots come from the server-side Gateway registry.
                 var prefix = "/api/" + target.Service;
                 var route = gateway.Value.Routes.FirstOrDefault(r =>
                     r.Prefix.Equals(prefix, StringComparison.OrdinalIgnoreCase));
                 var serviceCredential = cfg["ThirdParty:ServiceTokens:" + target.Code];
                 if (route is null || string.IsNullOrWhiteSpace(serviceCredential))
                     return Results.Problem("La identidad interna de integración no está configurada.", statusCode: 503);
-                // Catalog slugs are fixed server-side: callers cannot enumerate unrelated catalogs.
-                var suffix = target.Path.Replace("{id}", Uri.EscapeDataString(id ?? ""), StringComparison.Ordinal)
-                    .Replace("{catalogGroupSlug}", Uri.EscapeDataString(target.CatalogSlug ?? ""), StringComparison.Ordinal);
-                if (route.StripPrefix) suffix = suffix[prefix.Length..];
-                var destination = route.Destination.TrimEnd('/') + suffix;
-                if (!Uri.TryCreate(destination, UriKind.Absolute, out var uri) ||
-                    uri.Scheme is not ("http" or "https"))
-                    return Results.Problem(statusCode: 503);
 
-                var outgoing = new HttpRequestMessage(new HttpMethod(target.Method), uri);
-                outgoing.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", serviceCredential);
-                outgoing.Headers.TryAddWithoutValidation("X-Correlation-Id", ctx.TraceIdentifier);
-                // Preserve external request idempotency for Pricing operations.
-                if (target.Method == "POST")
-                {
-                    var idempotencyKey = ctx.Request.Headers["Idempotency-Key"].ToString();
-                    if (idempotencyKey.Length is < 8 or > 128 || idempotencyKey.Any(char.IsControl))
-                        return Results.BadRequest(new { message = "POST requiere Idempotency-Key (8 a 128 caracteres)." });
-                    outgoing.Headers.TryAddWithoutValidation("Idempotency-Key", idempotencyKey);
-                }
+                var dynamicRoute = definition.Target.StartsWith("route.", StringComparison.Ordinal);
+                if (dynamicRoute && id is not null)
+                    return Results.BadRequest(new { message = "En rutas descubiertas, los parámetros se envían como campos de la API." });
 
+                var pathValues = new Dictionary<string, string>(StringComparer.Ordinal);
+                var query = new List<string>();
+                JsonObject? body = null;
                 if (target.Method == "GET")
                 {
-                    var query = new List<string>();
                     foreach (var field in definition.Inputs)
                     {
                         var values = ctx.Request.Query[field.Public];
                         if (field.Required && values.All(string.IsNullOrWhiteSpace))
                             return Results.BadRequest(new { message = "Falta el parámetro " + field.Public });
-                        // Multi-select filters (statuses, carrierIds, polIds, etc.) are
-                        // forwarded as repeated query parameters, not comma-separated text.
                         if (values.Count > 100) return Results.BadRequest(new { message = "Demasiados valores de filtro." });
                         foreach (var value in values)
                         {
                             if (string.IsNullOrWhiteSpace(value)) continue;
                             if (value.Length > 2048) return Results.BadRequest();
-                            query.Add(Uri.EscapeDataString(field.Internal) + "=" + Uri.EscapeDataString(value));
+                            if (dynamicRoute && field.Internal.StartsWith("path.", StringComparison.Ordinal))
+                            {
+                                if (values.Count != 1) return Results.BadRequest(new { message = "Parámetro de ruta duplicado." });
+                                pathValues[field.Internal[5..]] = value;
+                            }
+                            else
+                            {
+                                var upstreamName = dynamicRoute && field.Internal.StartsWith("query.", StringComparison.Ordinal)
+                                    ? field.Internal[6..] : field.Internal;
+                                query.Add(Uri.EscapeDataString(upstreamName) + "=" + Uri.EscapeDataString(value));
+                            }
                         }
                     }
                     if (ctx.Request.Query.Keys.Any(k => !definition.Inputs.Any(f => f.Public == k)))
                         return Results.BadRequest(new { message = "Parámetro no publicado." });
-                    if (query.Count > 0)
-                        outgoing.RequestUri = new Uri(destination + "?" + string.Join("&", query));
                 }
                 else if (definition.Inputs.Count > 0)
                 {
@@ -289,27 +304,66 @@ public static class ThirdPartyApiEndpoints
                     { return Results.BadRequest(new { message = "JSON inválido." }); }
                     if (input is null || !ValidIncomingFields(input, definition.Inputs))
                         return Results.BadRequest(new { message = "El cuerpo contiene campos no publicados." });
-                    var body = new JsonObject();
+                    body = new JsonObject();
                     foreach (var field in definition.Inputs)
                     {
                         var flatProvided = input.TryGetPropertyValue(field.Public, out var flat);
-                        // Accept either the easy external flat field name or the original
-                        // nested JSON structure from Pricing (but never both for one field).
-                        var nested = field.Internal != field.Public
-                            ? GetNode(input, field.Internal)
-                            : null;
+                        var nested = field.Internal != field.Public ? GetNode(input, field.Internal) : null;
                         if (flatProvided && nested is not null)
                             return Results.BadRequest(new { message = "Campo duplicado: " + field.Public });
                         var value = flatProvided ? flat : nested;
                         if (field.Required && value is null)
                             return Results.BadRequest(new { message = "Falta " + field.Public });
-                        if (value is not null)
-                            SetNode(body, field.Internal, value.DeepClone());
+                        if (value is null) continue;
+                        if (dynamicRoute && field.Internal.StartsWith("path.", StringComparison.Ordinal))
+                        {
+                            if (value is not JsonValue) return Results.BadRequest(new { message = "Parámetro de ruta inválido." });
+                            pathValues[field.Internal[5..]] = value.ToString();
+                        }
+                        else if (dynamicRoute && field.Internal.StartsWith("query.", StringComparison.Ordinal))
+                        {
+                            if (value is not JsonValue) return Results.BadRequest(new { message = "Parámetro de consulta inválido." });
+                            query.Add(Uri.EscapeDataString(field.Internal[6..]) + "=" + Uri.EscapeDataString(value.ToString()));
+                        }
+                        else if (dynamicRoute && field.Internal == "body")
+                        {
+                            if (value is not JsonObject obj) return Results.BadRequest(new { message = "body debe ser un objeto JSON." });
+                            body = (JsonObject)obj.DeepClone();
+                        }
+                        else
+                        {
+                            var internalPath = dynamicRoute && field.Internal.StartsWith("body.", StringComparison.Ordinal)
+                                ? field.Internal[5..] : field.Internal;
+                            SetNode(body, internalPath, value.DeepClone());
+                        }
                     }
-                    outgoing.Content = new StringContent(body.ToJsonString(), Encoding.UTF8, "application/json");
                 }
                 else if (ctx.Request.ContentLength is > 0)
                     return Results.BadRequest(new { message = "Este endpoint no recibe cuerpo JSON." });
+
+                var suffix = dynamicRoute
+                    ? ThirdPartyRouteDiscovery.BuildPath(target.Path, pathValues)
+                    : target.Path.Replace("{id}", Uri.EscapeDataString(id ?? ""), StringComparison.Ordinal)
+                        .Replace("{catalogGroupSlug}", Uri.EscapeDataString(target.CatalogSlug ?? ""), StringComparison.Ordinal);
+                if (suffix is null)
+                    return Results.BadRequest(new { message = "Faltan parámetros para formar la ruta interna." });
+                if (route.StripPrefix) suffix = suffix[prefix.Length..];
+                var destination = route.Destination.TrimEnd('/') + suffix;
+                if (query.Count > 0) destination += "?" + string.Join("&", query);
+                if (!Uri.TryCreate(destination, UriKind.Absolute, out var uri) || uri.Scheme is not ("http" or "https"))
+                    return Results.Problem(statusCode: 503);
+                var outgoing = new HttpRequestMessage(new HttpMethod(target.Method), uri);
+                outgoing.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", serviceCredential);
+                outgoing.Headers.TryAddWithoutValidation("X-Correlation-Id", ctx.TraceIdentifier);
+                if (target.Method == "POST")
+                {
+                    var idempotencyKey = ctx.Request.Headers["Idempotency-Key"].ToString();
+                    if (idempotencyKey.Length is < 8 or > 128 || idempotencyKey.Any(char.IsControl))
+                        return Results.BadRequest(new { message = "POST requiere Idempotency-Key (8 a 128 caracteres)." });
+                    outgoing.Headers.TryAddWithoutValidation("Idempotency-Key", idempotencyKey);
+                }
+                if (body is not null && (body.Count > 0 || definition.Inputs.Any(f => f.Internal == "body")))
+                    outgoing.Content = new StringContent(body.ToJsonString(), Encoding.UTF8, "application/json");
 
                 var started = System.Diagnostics.Stopwatch.StartNew();
                 int status = 502;
@@ -458,22 +512,39 @@ public static class ThirdPartyApiEndpoints
         current[segments[^1]] = value;
     }
 
-    private static string? Validate(PublishedEndpoint d, IConfiguration cfg)
+    private static string? Validate(PublishedEndpoint d, IConfiguration cfg, GatewayOptions gateway)
     {
         if (!Slug.IsMatch(d.Slug) || string.IsNullOrWhiteSpace(d.Name) || d.Name.Length > 100)
             return "Nombre o identificador de API inválido.";
-        var target = Targets(cfg).FirstOrDefault(t => t.Code == d.Target);
+        var target = ResolveTarget(d.Target, cfg, gateway);
         if (target is null) return "Seleccioná un endpoint interno aprobado.";
         if (d.Enabled && string.IsNullOrWhiteSpace(cfg["ThirdParty:ServiceTokens:" + target.Code]))
             return "Configurá la identidad técnica de esta operación antes de publicarla.";
-        // A contract can only expose or accept documented fields for its operation.
-        // The client UI uses this exact catalogue for all selector choices.
+        var dynamicRoute = d.Target.StartsWith("route.", StringComparison.Ordinal);
+        // Legacy templates have strictly typed field catalogues. Dynamic routes are
+        // selected by administrators; arbitrary fields are constrained by the source
+        // name grammar and by the route-scoped upstream JWT.
         var allowedInputs = ThirdPartyFieldCatalog.Inputs(target.Code);
         var allowedOutputs = ThirdPartyFieldCatalog.Outputs(target.Code);
-        if (d.Inputs.Any(f => !allowedInputs.Any(x => x.Public == f.Public && x.Internal == f.Internal && (!x.Required || f.Required))) ||
-            d.Outputs.Any(f => !allowedOutputs.Any(x => x.Public == f.Public && x.Internal == f.Internal)))
+        if (dynamicRoute)
+        {
+            var requiredPath = ThirdPartyRouteDiscovery.PathNames(target.Path);
+            if (requiredPath.Any(name => !d.Inputs.Any(f =>
+                    f.Internal == "path." + name && f.Required)))
+                return "Faltan los parámetros obligatorios de la ruta interna.";
+            if (d.Inputs.Any(f =>
+                !(f.Internal == "body" || f.Internal.StartsWith("body.", StringComparison.Ordinal) ||
+                  f.Internal.StartsWith("path.", StringComparison.Ordinal) ||
+                  f.Internal.StartsWith("query.", StringComparison.Ordinal))))
+                return "Los campos de entrada requieren origen path., query. o body.";
+            if (d.Inputs.Any(f => f.Internal.StartsWith("path.", StringComparison.Ordinal) &&
+                 !requiredPath.Contains(f.Internal[5..])))
+                return "No se permite alterar parámetros de ruta no declarados.";
+        }
+        if (!dynamicRoute && (d.Inputs.Any(f => !allowedInputs.Any(x => x.Public == f.Public && x.Internal == f.Internal && (!x.Required || f.Required))) ||
+            d.Outputs.Any(f => !allowedOutputs.Any(x => x.Public == f.Public && x.Internal == f.Internal))))
             return "Seleccioná los campos disponibles para esta operación.";
-        if (allowedInputs.Any(x => x.Required && !d.Inputs.Any(f => f.Public == x.Public && f.Internal == x.Internal && f.Required)))
+        if (!dynamicRoute && allowedInputs.Any(x => x.Required && !d.Inputs.Any(f => f.Public == x.Public && f.Internal == x.Internal && f.Required)))
             return "Faltan campos obligatorios de la operación.";
         if (target.Code == "pricing-rate-request-create")
         {
@@ -495,6 +566,11 @@ public static class ThirdPartyApiEndpoints
             return "Ruta de datos de respuesta inválida.";
         return null;
     }
+
+    private static ApprovedTarget? ResolveTarget(string code, IConfiguration cfg, GatewayOptions gateway) =>
+        code.StartsWith("route.", StringComparison.Ordinal)
+            ? ThirdPartyRouteDiscovery.Resolve(code, cfg, gateway)
+            : Targets(cfg).FirstOrDefault(t => t.Code == code);
 
     private static List<ApprovedTarget> Targets(IConfiguration cfg)
     {

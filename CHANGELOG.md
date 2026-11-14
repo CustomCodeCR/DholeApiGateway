@@ -1,3 +1,9 @@
+## [1.7.0] - 2026-11-14 (API Manager: rutas de todos los servicios)
+
+- MINOR: inventario autenticado de rutas de todos los servicios API registrados por Gateway; admite seleccionar endpoint HTTP, método y mapeos personalizados.
+- Contratos externos necesitan identidad técnica de mínimo privilegio; se preservan API Keys, rate limits y endpoints heredados.
+- Release global Dhole 1.56.0, pendiente de staging completo y autorización de producción.
+
 ## [1.6.2] - 2026-11-14 (API Manager 1.55.0 synchronized release)
 
 - MINOR respecto a master 1.5.3: API externa v1 con ocho catálogos de Config y Solicitudes de Tarifas, API Keys, mapeo por operación y alcance de solo lectura.

@@ -311,6 +311,17 @@ public static class ThirdPartyFieldCatalog
 
     public static IReadOnlyList<ThirdPartyFieldOption> Outputs(string code) => code switch
     {
+        var catalog when catalog.StartsWith("config-catalog-", StringComparison.Ordinal) =>
+        [
+            new("id", "id", "Identificador", false, true) { Type = "UUID", Group = "Catálogo" },
+            new("code", "code", "Código", false, true) { Type = "texto", Group = "Catálogo" },
+            new("slug", "slug", "Slug", false, false) { Type = "texto", Group = "Catálogo" },
+            new("name", "name", "Nombre", false, true) { Type = "texto", Group = "Catálogo" },
+            new("description", "description", "Descripción", false, false) { Type = "texto", Group = "Catálogo" },
+            new("value", "value", "Valor", false, true) { Type = "texto", Group = "Catálogo" },
+            new("isActive", "isActive", "Activo", false, false) { Type = "booleano", Group = "Catálogo" },
+            new("sortOrder", "sortOrder", "Orden", false, false) { Type = "número", Group = "Catálogo" },
+        ],
         "pricing-rate-request-create" or "pricing-rate-create" =>
         [
             new("value", "value", "Identificador generado", false, true) { Type = "UUID", Group = "Resultado" },

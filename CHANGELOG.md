@@ -1,3 +1,8 @@
+## [1.7.0] - 2026-11-14 (API Manager universal route discovery)
+
+- MINOR: descubre el inventario protegido de rutas REST de los servicios registrados en el Gateway y habilita la selección/mapeo explícito de contratos.
+- Mantiene API Keys por ruta, autorización de integración y destinos internos registrados; no expone el inventario público sin JWT.
+
 ## [1.6.2] - 2026-11-14 (API Manager 1.55.0 synchronized release)
 
 - MINOR respecto a master 1.5.3: API externa v1 con ocho catálogos de Config y Solicitudes de Tarifas, API Keys, mapeo por operación y alcance de solo lectura.

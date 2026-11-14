@@ -71,7 +71,7 @@ public static class ThirdPartyApiEndpoints
         {
             if (!Authorized(ctx)) return Results.Forbid();
             return Results.Ok(await ThirdPartyRouteDiscovery.DiscoverAsync(
-                service, cfg, gateway.Value, clients, ctx.RequestAborted));
+                service, cfg, gateway.Value, clients, ctx.Request.Headers.Authorization.ToString(), ctx.RequestAborted));
         });
 
         admin.MapPost("/resolve", (HttpContext ctx, IConfiguration cfg, IOptions<GatewayOptions> gateway,

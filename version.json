@@ -2,8 +2,8 @@
   "schemaVersion": 1,
   "ecosystem": "Dhole",
   "component": "DholeApiGateway",
-  "version": "1.6.1",
-  "ecosystemVersion": "1.53.0",
-  "releaseId": "DH-20261114-API-MANAGER-PROMOTION-001",
+  "version": "1.6.2",
+  "ecosystemVersion": "1.55.0",
+  "releaseId": "DH-20261114-API-MANAGER-PROMOTION-002",
   "releaseStatus": "candidate-ci-and-staging-pending"
 }

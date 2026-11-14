@@ -1,3 +1,8 @@
+## [1.6.2] - 2026-11-14 (API Manager 1.55.0 synchronized release)
+
+- MINOR respecto a master 1.5.3: API externa v1 con ocho catálogos de Config y Solicitudes de Tarifas, API Keys, mapeo por operación y alcance de solo lectura.
+- Corrige el registro de versiones para promoción coordinada 1.55.0; publica únicamente rutas aprobadas.
+
 ## [1.6.1] - 2026-11-14 (Dhole API Manager promotion)
 
 - MINOR de funcionalidad acumulada respecto a master 1.5.3: rutas `/api/external/v1`, ocho catálogos GET de Config con slugs internos inmutables y mapeo de campos.

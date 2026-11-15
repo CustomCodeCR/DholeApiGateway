@@ -70,5 +70,35 @@ jobs:
           docker compose --env-file "$DHOLE_ENV_FILE" -f "$COMPOSE_FILE" -p "$COMPOSE_PROJECT" up -d --no-deps --force-recreate --pull never api-gateway
           docker compose --env-file "$DHOLE_ENV_FILE" -f "$COMPOSE_FILE" -p "$COMPOSE_PROJECT" ps api-gateway
 
+      - name: Diagnose third-party storage after deployment (no secrets)
+        shell: bash
+        run: |
+          set -euo pipefail
+          ID="$(docker compose --env-file "$DHOLE_ENV_FILE" -f "$COMPOSE_FILE" -p "$COMPOSE_PROJECT" ps -q api-gateway)"
+          if [[ -z "$ID" ]]; then
+            echo "Gateway container is missing"
+            exit 1
+          fi
+          LOG="$(docker logs --since 20m "$ID" 2>&1 || true)"
+          if grep -q 'Third-party migration failed\|Third-party storage migration failed' <<< "$LOG"; then
+            echo "::warning::Third-party database migration failed on master. Diagnosing SQLSTATE and exception type."
+          else
+            echo "No third-party migration failure was found in the most recent container logs."
+          fi
+          for code in 28P01 3D000 42501 42P07 42P06 42P01 23505 55006 57P03 08001 08006; do
+            if grep -q "$code" <<< "$LOG"; then
+              echo "PostgreSQL SQLSTATE: $code"
+            fi
+          done
+          if grep -q 'Npgsql.PostgresException' <<< "$LOG"; then echo "Exception: Npgsql.PostgresException"; fi
+          if grep -q 'Npgsql.NpgsqlException' <<< "$LOG"; then echo "Exception: Npgsql.NpgsqlException"; fi
+          if grep -q 'SocketException' <<< "$LOG"; then echo "Exception: SocketException"; fi
+          if grep -q 'TimeoutException\|Timeout during' <<< "$LOG"; then echo "Exception: timeout"; fi
+          if grep -q 'role .* does not exist' <<< "$LOG"; then echo "PostgreSQL role missing"; fi
+          if grep -q 'database .* does not exist' <<< "$LOG"; then echo "PostgreSQL database missing"; fi
+          if grep -q 'relation .* already exists' <<< "$LOG"; then echo "PostgreSQL table conflict"; fi
+          if grep -q 'password authentication failed' <<< "$LOG"; then echo "PostgreSQL authentication error"; fi
+          if grep -q 'permission denied' <<< "$LOG"; then echo "PostgreSQL permission denied"; fi
+
       - name: Cleanup old images
         run: docker image prune -f

@@ -69,18 +69,15 @@ builder.Services.AddCustomCodeApiWithSwagger(title: "Dhole Api Gateway", version
 
 builder.Services.AddCustomCodeAuth(builder.Configuration, addJwt: true, addApiKeys: false);
 
-// EF Core migrations create the integration database (when PostgreSQL permits it)
-// and apply versioned schema changes on startup. The module remains opt-in.
-if (builder.Configuration.GetValue<bool>("ThirdParty:Enabled"))
+// Register integration routes independently of storage readiness.
+// Authorization and API Key restrictions remain enforced by the endpoints.
+builder.Services.AddSingleton<ThirdPartyModuleReadiness>();
+builder.Services.AddDbContext<ThirdPartyDbContext>(options =>
 {
-    builder.Services.AddDbContext<ThirdPartyDbContext>(options =>
-    {
-        var connection = builder.Configuration["ThirdParty:ConnectionString"];
-        if (string.IsNullOrWhiteSpace(connection))
-            throw new InvalidOperationException("ThirdParty:ConnectionString no configurada.");
+    var connection = builder.Configuration["ThirdParty:ConnectionString"];
+    if (!string.IsNullOrWhiteSpace(connection))
         options.UseNpgsql(connection);
-    });
-}
+});
 
 
 builder.Services.AddCors(options =>
@@ -258,6 +255,29 @@ app.UseAuthentication();
 app.UseRateLimiter();
 app.UseAuthorization();
 
+// Keep the catalog and route discovery usable even if PostgreSQL is unavailable.
+// Persistence and external traffic fail closed with a descriptive 503 rather than 404.
+app.Use(async (context, next) =>
+{
+    var readiness = context.RequestServices.GetRequiredService<ThirdPartyModuleReadiness>();
+    var path = context.Request.Path;
+    var needsStorage = path.StartsWithSegments("/api/external") ||
+        (path.StartsWithSegments("/api/integrations/third-party", out var suffix) &&
+         (suffix.StartsWithSegments("/endpoints") || suffix.StartsWithSegments("/keys")));
+    if (needsStorage && !readiness.StorageReady && !HttpMethods.IsOptions(context.Request.Method))
+    {
+        context.Response.StatusCode = StatusCodes.Status503ServiceUnavailable;
+        await context.Response.WriteAsJsonAsync(new
+        {
+            code = "ThirdParty.StorageUnavailable",
+            message = readiness.Message,
+            traceId = context.TraceIdentifier,
+        });
+        return;
+    }
+    await next();
+});
+
 app.UseMiddleware<GatewayHeaderForwardingMiddleware>();
 app.UseMiddleware<GatewayProxyMiddleware>();
 
@@ -383,19 +403,27 @@ app.MapGet(
     )
     .AllowAnonymous();
 
-// Third-party integration is opt-in. The backing database is separate from service data.
-if (app.Configuration.GetValue<bool>("ThirdParty:Enabled"))
+// Never hide the entire API Manager when its storage is unavailable.
+var thirdPartyReadiness = app.Services.GetRequiredService<ThirdPartyModuleReadiness>();
+if (string.IsNullOrWhiteSpace(app.Configuration["ThirdParty:ConnectionString"]))
+{
+    thirdPartyReadiness.Message = "El almacenamiento de APIs para terceros no está configurado en Gateway. Configurá ThirdParty:ConnectionString y reiniciá el servicio.";
+    app.Logger.LogWarning("Third-party storage not configured; catalog available, persistence returns 503.");
+}
+else
 {
     try
     {
         await ThirdPartyApiEndpoints.MigrateStorageAsync(app.Services);
-        app.MapThirdPartyEndpoints();
+        thirdPartyReadiness.StorageReady = true;
+        thirdPartyReadiness.Message = "Almacenamiento y migraciones de APIs para terceros disponibles.";
     }
     catch (Exception exception)
     {
-        // Failure of an optional integration must never bring down Dhole's core Gateway.
-        app.Logger.LogError(exception, "Third-party API module unavailable; Gateway continues serving core routes.");
+        thirdPartyReadiness.Message = "No se pudo iniciar el almacenamiento de APIs para terceros. Revisá PostgreSQL y las migraciones de Gateway.";
+        app.Logger.LogError(exception, "Third-party migration failed; routes still registered; persistence returns 503.");
     }
 }
+app.MapThirdPartyEndpoints();
 
 app.Run();

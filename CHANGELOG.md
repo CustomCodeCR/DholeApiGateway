@@ -1,3 +1,9 @@
+## [1.8.1] - 2026-11-15 (API Manager: rutas siempre registradas y diagnóstico de storage)
+
+- PATCH DH-20261115-THIRD-PARTY-404-155: elimina ThirdParty:Enabled y registra rutas protegidas del API Manager independientemente de la disponibilidad de PostgreSQL.
+- Si no existe conexión o falla una migración, los catálogos siguen disponibles y las operaciones que requieren almacenamiento devuelven HTTP 503 con un código específico, en vez de 404 engañosos.
+- Añade GET /api/integrations/third-party/status protegido por integraciones.thirdparty.manage. Conserva JWT, API Keys y autorización de servicios.
+
 ## [1.8.0] - 2026-11-14 (API Keys independientes y preview GET seguro)
 
 - DH-20261114-API-KEYS-PREVIEW-154

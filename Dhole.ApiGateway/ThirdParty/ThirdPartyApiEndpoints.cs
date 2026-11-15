@@ -35,6 +35,13 @@ public sealed record IssueKeyRequest(string Label, int ExpiresInDays = 90, int M
 public sealed record KeyEndpointLinksRequest(Guid[] EndpointIds);
 public sealed record PreviewRequest(PublishedEndpoint Endpoint, Dictionary<string, JsonElement>? Parameters, string? Id);
 
+// Exposes readiness without leaking connection strings, tokens or database details.
+public sealed class ThirdPartyModuleReadiness
+{
+    public bool StorageReady { get; set; }
+    public string Message { get; set; } = "Almacenamiento de integraciones pendiente.";
+}
+
 public static class ThirdPartyApiEndpoints
 {
     private const string Manage = "integrations.thirdparty.manage";
@@ -60,6 +67,11 @@ public static class ThirdPartyApiEndpoints
     public static void MapThirdPartyEndpoints(this WebApplication app)
     {
         var admin = app.MapGroup("/api/integrations/third-party").RequireAuthorization();
+
+        admin.MapGet("/status", (HttpContext ctx, ThirdPartyModuleReadiness status) =>
+            Authorized(ctx)
+                ? Results.Ok(new { routesRegistered = true, storageReady = status.StorageReady, message = status.Message })
+                : Results.Forbid());
 
         admin.MapGet("/catalog", (HttpContext ctx, IConfiguration cfg) =>
             Authorized(ctx) ? Results.Ok(Targets(cfg)) : Results.Forbid());

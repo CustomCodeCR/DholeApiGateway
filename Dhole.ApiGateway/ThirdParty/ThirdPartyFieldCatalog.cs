@@ -335,7 +335,7 @@ public static class ThirdPartyFieldCatalog
             new("value", "value", "Valor", false, true) { Type = "texto", Group = "Catálogo" },
             new("isActive", "isActive", "Activo", false, false) { Type = "booleano", Group = "Catálogo" },
             new("sortOrder", "sortOrder", "Orden", false, false) { Type = "número", Group = "Catálogo" },
-            new("metadata", "metadata", "Metadatos completos (objeto JSON)", false, true) { Type = "objeto", Group = "Metadatos de Config" },
+            new("metadata", "metadata", "Metadatos completos (objeto JSON)", false, false) { Type = "objeto", Group = "Metadatos de Config" },
             new("metadataJson", "metadataJson", "Metadatos originales (JSON)", false, false) { Type = "JSON", Group = "Metadatos de Config" },
             new("terminalType", "metadataJson.terminalType", "Tipo de terminal (CY / SD / APT)", false,
                 catalog is "config-catalog-pol" or "config-catalog-poe" or "config-catalog-pod") { Type = "texto", Group = "Ubicación" },

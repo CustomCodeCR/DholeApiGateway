@@ -2,9 +2,9 @@
   "schemaVersion": 1,
   "ecosystem": "Dhole",
   "component": "DholeApiGateway",
-  "version": "1.8.2",
+  "version": "1.8.3",
   "ecosystemVersion": "1.57.1",
-  "releaseId": "DH-20261115-THIRDPARTY-STORAGE-DIAG-156",
+  "releaseId": "DH-20261115-THIRDPARTY-STORAGE-READONLY-157",
   "releaseStatus": "candidate-ci-and-staging-pending",
-  "businessReleaseId": "DH-20261115-THIRDPARTY-STORAGE-DIAG-156"
+  "businessReleaseId": "DH-20261115-THIRDPARTY-STORAGE-READONLY-157"
 }

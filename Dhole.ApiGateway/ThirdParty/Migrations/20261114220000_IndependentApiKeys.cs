@@ -25,10 +25,20 @@ public sealed class IndependentApiKeys : Migration
             constraints: table =>
             {
                 table.PrimaryKey("public_key_endpoints_pkey", x => new { x.key_id, x.endpoint_id });
-                table.ForeignKey("public_key_endpoints_key_id_fkey", x => x.key_id,
-                    "integrations", "public_keys", "id", onDelete: ReferentialAction.Cascade);
-                table.ForeignKey("public_key_endpoints_endpoint_id_fkey", x => x.endpoint_id,
-                    "integrations", "public_endpoints", "id", onDelete: ReferentialAction.Cascade);
+                table.ForeignKey(
+                    name: "public_key_endpoints_key_id_fkey",
+                    column: x => x.key_id,
+                    principalTable: "public_keys",
+                    principalColumn: "id",
+                    principalSchema: "integrations",
+                    onDelete: ReferentialAction.Cascade);
+                table.ForeignKey(
+                    name: "public_key_endpoints_endpoint_id_fkey",
+                    column: x => x.endpoint_id,
+                    principalTable: "public_endpoints",
+                    principalColumn: "id",
+                    principalSchema: "integrations",
+                    onDelete: ReferentialAction.Cascade);
             });
         migrationBuilder.CreateIndex(
             name: "ix_public_key_endpoints_endpoint_id",

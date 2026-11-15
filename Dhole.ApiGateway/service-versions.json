@@ -2,13 +2,13 @@
   "schemaVersion": 1,
   "ecosystem": "Dhole",
   "ecosystemVersion": "1.57.1",
-  "releaseId": "DH-20261115-THIRDPARTY-STORAGE-READONLY-157",
+  "releaseId": "DH-20261115-THIRDPARTY-FK-SCHEMA-160",
   "source": "api-manager-promotion-coordinated-release",
   "services": [
     {
       "key": "gateway",
       "component": "DholeApiGateway",
-      "version": "1.8.3",
+      "version": "1.8.6",
       "repository": "CustomCodeCR/DholeApiGateway"
     },
     {

@@ -1,3 +1,9 @@
+## [1.8.6] - 2026-11-15 (API Keys migration: correct foreign-key schema)
+
+- PATCH DH-20261115-THIRDPARTY-FK-SCHEMA-160: corrige ForeignKey en 20261114220000_IndependentApiKeys: usa principalSchema="integrations", principalTable="public_keys"/"public_endpoints" y principalColumn="id" por nombre. Antes, argumentos posicionales generaban SQLSTATE 3F000 (schema "id" does not exist).
+- Incluye regresión automatizada que inspecciona las dos foreign keys; no borra ni reinicia bases de datos, contratos, claves ni historial EF.
+- Garantiza que master prepare de forma idempotente el esquema integrations antes de ejecutar las migraciones EF Core.
+
 ## [1.8.3] - 2026-11-15 (Diagnóstico PostgreSQL sin modificación de datos)
 
 - PATCH DH-20261115-THIRDPARTY-STORAGE-READONLY-157: workflow de solo lectura en runner self-hosted para identificar código SQLSTATE, existencia de dhole_integrations, tablas e historial de EF sin imprimir secretos.

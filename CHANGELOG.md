@@ -1,3 +1,8 @@
+## [1.8.3] - 2026-11-15 (Solo lectura: inventario de PostgreSQL de API Manager)
+
+- PATCH DH-20261115-THIRDPARTY-STORAGE-READONLY-157: diagnóstico operativo aislado en runner self-hosted, sin cambios de base, para extraer SQLSTATE de Gateway y metadatos de existencia de dhole_integrations y sus tablas.
+- No imprime credenciales, JWT ni cadenas de conexión. Ayuda a diferenciar fallos del servidor PostgreSQL de conflictos con migraciones antiguas.
+
 ## [1.8.2] - 2026-11-15 (API Manager PostgreSQL startup diagnostic)
 
 - PATCH DH-20261115-THIRDPARTY-STORAGE-DIAG-156: deploy de Gateway clasifica en logs del runner SQLSTATE y excepciones de migración PostgreSQL sin imprimir credenciales, cadenas de conexión ni datos sensibles.

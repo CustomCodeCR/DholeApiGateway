@@ -95,6 +95,20 @@ public static class ThirdPartyFieldCatalog
     public static IReadOnlyList<ThirdPartyFieldOption> Inputs(string code)
     {
         var fields = BaseInputs(code);
+        if (code.StartsWith("config-catalog-", StringComparison.Ordinal))
+        {
+            // Config owns the classification. These are optional, item-level filters
+            // handled locally by Gateway, not query parameters supported by Config.
+            return code is "config-catalog-pol" or "config-catalog-poe" or "config-catalog-pod"
+                ?
+                [
+                    new("terminalType", "metadataJson.terminalType", "Tipo de terminal (CY / SD / APT)") { Type = "texto", Group = "Filtros de metadatos" },
+                    new("transportMode", "metadataJson.transportMode", "Modalidad (Maritime / Land / Air)") { Type = "texto", Group = "Filtros de metadatos" },
+                    new("countryCode", "metadataJson.countryCode", "País (ISO)") { Type = "texto", Group = "Filtros de metadatos" },
+                    new("iataCode", "metadataJson.iataCode", "Código IATA") { Type = "texto", Group = "Filtros de metadatos" },
+                ]
+                : fields;
+        }
         if (code != "pricing-rate-request-create") return fields;
         return fields.Select(field => field.Internal == "payload"
                 ? field with { Required = false, Selected = true }
@@ -321,6 +335,22 @@ public static class ThirdPartyFieldCatalog
             new("value", "value", "Valor", false, true) { Type = "texto", Group = "Catálogo" },
             new("isActive", "isActive", "Activo", false, false) { Type = "booleano", Group = "Catálogo" },
             new("sortOrder", "sortOrder", "Orden", false, false) { Type = "número", Group = "Catálogo" },
+            new("metadata", "metadata", "Metadatos completos (objeto JSON)", false, false) { Type = "objeto", Group = "Metadatos de Config" },
+            new("metadataJson", "metadataJson", "Metadatos originales (JSON)", false, false) { Type = "JSON", Group = "Metadatos de Config" },
+            new("terminalType", "metadataJson.terminalType", "Tipo de terminal (CY / SD / APT)", false,
+                catalog is "config-catalog-pol" or "config-catalog-poe" or "config-catalog-pod") { Type = "texto", Group = "Ubicación" },
+            new("transportMode", "metadataJson.transportMode", "Modalidad de transporte", false, false) { Type = "texto", Group = "Ubicación" },
+            new("routeRole", "metadataJson.routeRole", "Rol de ruta (POL / POE / POD)", false, false) { Type = "texto", Group = "Ubicación" },
+            new("countryCode", "metadataJson.countryCode", "País (ISO)", false, false) { Type = "texto", Group = "Ubicación" },
+            new("iataCode", "metadataJson.iataCode", "Código IATA", false, false) { Type = "texto", Group = "Aeropuerto" },
+            new("icaoCode", "metadataJson.icaoCode", "Código ICAO", false, false) { Type = "texto", Group = "Aeropuerto" },
+            new("airportName", "metadataJson.airportName", "Nombre del aeropuerto", false, false) { Type = "texto", Group = "Aeropuerto" },
+            new("city", "metadataJson.city", "Ciudad", false, false) { Type = "texto", Group = "Ubicación" },
+            new("latitude", "metadataJson.latitude", "Latitud", false, false) { Type = "número", Group = "Geografía" },
+            new("longitude", "metadataJson.longitude", "Longitud", false, false) { Type = "número", Group = "Geografía" },
+            new("terminalTypes", "metadataJson.terminalTypes", "Tipos de terminal admitidos", false, false) { Type = "lista", Group = "Metadatos de Config" },
+            new("transportModes", "metadataJson.transportModes", "Modalidades admitidas", false, false) { Type = "lista", Group = "Metadatos de Config" },
+            new("pricingWorkflow", "metadataJson.pricingWorkflow", "Disponible para Pricing", false, false) { Type = "booleano", Group = "Metadatos de Config" },
         ],
         "pricing-rate-request-create" or "pricing-rate-create" =>
         [

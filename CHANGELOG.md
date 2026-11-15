@@ -1,3 +1,9 @@
+## [1.9.0] - 2026-11-15 (API Manager: metadatos completos de Config)
+
+- MINOR DH-20261115-API-METADATA-161: las ocho APIs de catálogos permiten seleccionar metadataJson, el objeto metadata completo y propiedades de cada registro, incluidos terminalType (CY/SD/APT), transportMode, routeRole, país y códigos IATA/ICAO.
+- Los filtros de terminal, transporte, país e IATA se aplican en Gateway tras consultar Config, con los mismos resultados en previsualización GET y API pública; no se envían filtros desconocidos a Config.
+- Preserva API Keys, rutas, REST/realtime y contratos publicados; las nuevas propiedades son optativas. Incluye pruebas de filtrado y JSON anidado.
+
 ## [1.8.6] - 2026-11-15 (API Keys migration: correct foreign-key schema)
 
 - PATCH DH-20261115-THIRDPARTY-FK-SCHEMA-160: corrige ForeignKey en 20261114220000_IndependentApiKeys: usa principalSchema="integrations", principalTable="public_keys"/"public_endpoints" y principalColumn="id" por nombre. Antes, argumentos posicionales generaban SQLSTATE 3F000 (schema "id" does not exist).

@@ -1,0 +1,70 @@
+name: Third-party PostgreSQL storage diagnostics (read-only)
+
+on:
+  push:
+    branches: [develop, master]
+    paths:
+      - .github/workflows/third-party-db-readonly.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: [self-hosted, linux, x64, dhole]
+    timeout-minutes: 5
+    steps:
+      - name: Inspect Gateway errors and PostgreSQL metadata without credentials
+        shell: bash
+        env:
+          TARGET_BRANCH: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          PROJECT=dhole
+          if [[ "$TARGET_BRANCH" == develop ]]; then PROJECT=dhole-staging; fi
+          echo "Deployment project: $PROJECT"
+          GATEWAY="$(docker ps -q --filter "label=com.docker.compose.project=$PROJECT" --filter "label=com.docker.compose.service=api-gateway" | head -n 1)"
+          if [[ -z "$GATEWAY" ]]; then
+            echo "Gateway container not found"
+            exit 1
+          fi
+          LOG="$(docker logs --since 120m "$GATEWAY" 2>&1 || true)"
+          if grep -q 'Third-party migration failed\|Third-party storage migration failed' <<< "$LOG"; then
+            echo "Storage migration failure: yes"
+          else
+            echo "Storage migration failure in current container logs: no"
+          fi
+          if grep -q 'Third-party storage not configured' <<< "$LOG"; then
+            echo "Storage connection configuration: absent"
+          fi
+          if grep -q 'Npgsql.PostgresException' <<< "$LOG"; then
+            echo "Exception category: PostgreSQL server rejected an operation"
+          elif grep -q 'Npgsql.NpgsqlException' <<< "$LOG"; then
+            echo "Exception category: PostgreSQL network/client connection"
+          fi
+          # Extract only five-character SQLSTATE codes from error lines.
+          # Never emit exception details, credentials, connection strings or query data.
+          CODES="$(printf '%s\n' "$LOG" | grep -E 'PostgresException|SqlState:' |
+            grep -oE '([[:space:]]|:)[A-Z0-9]{5}:' | tr -d ' :' | sort -u || true)"
+          if [[ -n "$CODES" ]]; then
+            while IFS= read -r code; do
+              [[ -n "$code" ]] && echo "Postgres SQLSTATE: $code"
+            done <<< "$CODES"
+          else
+            echo "Postgres SQLSTATE not present in current gateway logs"
+          fi
+          PG="$(docker ps -q --filter "label=com.docker.compose.service=postgres" --filter "label=com.docker.compose.project=$PROJECT" | head -n 1)"
+          if [[ -z "$PG" ]]; then
+            echo "PostgreSQL container not found in this Compose project; skipping database metadata"
+            exit 0
+          fi
+          # PostgreSQL catalog reads only. Authentication values stay inside the container.
+          DB_EXISTS="$(docker exec "$PG" sh -c 'PGPASSWORD="$POSTGRES_PASSWORD" psql -XAt -U "$POSTGRES_USER" -d postgres -c "SELECT count(*) FROM pg_database WHERE datname='\"'\"'dhole_integrations'\"'\"';"' 2>/dev/null || true)"
+          if [[ "$DB_EXISTS" != 1 ]]; then
+            echo "dhole_integrations database exists: no (or catalog access denied)"
+            exit 0
+          fi
+          echo "dhole_integrations database exists: yes"
+          META="$(docker exec "$PG" sh -c 'PGPASSWORD="$POSTGRES_PASSWORD" psql -XAt -U "$POSTGRES_USER" -d dhole_integrations -c "SELECT CASE WHEN to_regclass('\"'\"'integrations.public_endpoints'\"'\"') IS NULL THEN 0 ELSE 1 END, CASE WHEN to_regclass('\"'\"'integrations.public_keys'\"'\"') IS NULL THEN 0 ELSE 1 END, CASE WHEN to_regclass('\"'\"'integrations.public_key_endpoints'\"'\"') IS NULL THEN 0 ELSE 1 END, CASE WHEN to_regclass('\"'\"'public.\"__EFMigrationsHistory\"'\"'\"') IS NULL THEN 0 ELSE 1 END;"' 2>/dev/null || true)"
+          if [[ -n "$META" ]]; then echo "Read-only table existence (endpoints|keys|links|EF public history): $META"; fi

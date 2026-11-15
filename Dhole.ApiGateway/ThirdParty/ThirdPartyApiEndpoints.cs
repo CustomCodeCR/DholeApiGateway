@@ -354,6 +354,7 @@ public static class ThirdPartyApiEndpoints
                 return Results.BadRequest(new { message = "La prueba contiene parámetros no publicados." });
             var pathValues = new Dictionary<string, string>(StringComparer.Ordinal);
             var queries = new List<string>();
+            var catalogFilters = new Dictionary<string, string>(StringComparer.Ordinal);
             foreach (var field in definition.Inputs)
             {
                 if (!parameters.TryGetValue(field.Public, out var node) ||
@@ -379,6 +380,12 @@ public static class ThirdPartyApiEndpoints
                         if (elements.Length != 1)
                             return Results.BadRequest(new { message = "El parámetro de ruta debe ser único." });
                         pathValues[field.Internal[5..]] = value;
+                    }
+                    else if (IsCatalogFilter(target, field))
+                    {
+                        if (elements.Length != 1)
+                            return Results.BadRequest(new { message = "Solo se permite un valor por filtro de metadatos." });
+                        catalogFilters[field.Internal["metadataJson.".Length..]] = value;
                     }
                     else
                     {
@@ -449,6 +456,8 @@ public static class ThirdPartyApiEndpoints
                     (target.Code.StartsWith("config-catalog-", StringComparison.Ordinal) ||
                      target.Code is "pricing-rate-detail" or "pricing-usd-crc" or "pricing-rate-exchange-eur-usd"))
                     data = GetNode(parsed, "data") ?? parsed;
+                if (target.Code.StartsWith("config-catalog-", StringComparison.Ordinal))
+                    data = ThirdPartyCatalogMetadata.Filter(data, catalogFilters);
                 JsonNode projected = data is JsonArray array
                     ? new JsonArray(array.Select(row => (JsonNode?)Project(row, definition.Outputs)).ToArray())
                     : Project(data, definition.Outputs);
@@ -541,6 +550,7 @@ public static class ThirdPartyApiEndpoints
 
                 var pathValues = new Dictionary<string, string>(StringComparer.Ordinal);
                 var query = new List<string>();
+                var catalogFilters = new Dictionary<string, string>(StringComparer.Ordinal);
                 JsonObject? body = null;
                 if (target.Method == "GET")
                 {
@@ -558,6 +568,12 @@ public static class ThirdPartyApiEndpoints
                             {
                                 if (values.Count != 1) return Results.BadRequest(new { message = "Parámetro de ruta duplicado." });
                                 pathValues[field.Internal[5..]] = value;
+                            }
+                            else if (IsCatalogFilter(target, field))
+                            {
+                                if (values.Count != 1)
+                                    return Results.BadRequest(new { message = "Solo se permite un valor por filtro de metadatos." });
+                                catalogFilters[field.Internal["metadataJson.".Length..]] = value;
                             }
                             else
                             {
@@ -687,6 +703,8 @@ public static class ThirdPartyApiEndpoints
                             return Results.Json(output, statusCode: status);
                         }
 
+                        if (target.Code.StartsWith("config-catalog-", StringComparison.Ordinal))
+                            data = ThirdPartyCatalogMetadata.Filter(data, catalogFilters);
                         JsonNode projected = data is JsonArray array
                             ? new JsonArray(array.Select(row => (JsonNode?)Project(row, definition.Outputs)).ToArray())
                             : Project(data, definition.Outputs);
@@ -740,6 +758,10 @@ public static class ThirdPartyApiEndpoints
         return node;
     }
 
+    private static bool IsCatalogFilter(ApprovedTarget target, PublishedField field) =>
+        target.Code.StartsWith("config-catalog-", StringComparison.Ordinal) &&
+        field.Internal.StartsWith("metadataJson.", StringComparison.Ordinal);
+
     private static JsonObject Project(JsonNode? source, IEnumerable<PublishedField> fields)
     {
         var result = new JsonObject();
@@ -750,7 +772,9 @@ public static class ThirdPartyApiEndpoints
             // explicitly as "value" without revealing any other upstream fields.
             var node = source is JsonValue && field.Internal == "value"
                 ? source
-                : GetNode(source, field.Internal);
+                : field.Internal == "metadata" || field.Internal.StartsWith("metadataJson.", StringComparison.Ordinal)
+                    ? ThirdPartyCatalogMetadata.Read(source, field.Internal)
+                    : GetNode(source, field.Internal);
             if (node is not null) result[field.Public] = node.DeepClone();
         }
         return result;

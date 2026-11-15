@@ -102,3 +102,7 @@ curl -H "X-Api-Key: <clave> " \
 ## Reglas para producción
 
 No habilitar sin pruebas de aislamiento de clientes, autorización de cada servicio, revocación, cuotas, concurrencia, respuestas JSON, CSRF de la consola, paginación de GET y manejo de errores de backend. En POST/PUT/DELETE deben definirse idempotencia y semántica de concurrencia según el microservicio (por ejemplo ETag y claves de idempotencia). El despliegue del código **no equivale a publicar automáticamente APIs**.
+
+## Metadatos completos de Config (DH-20261115-API-METADATA-161)
+
+Para las APIs de catálogos de Config, los campos `metadata` (objeto JSON completo) y `metadataJson` (valor original) están disponibles como respuesta. Se pueden seleccionar `terminalType`, `transportMode`, `routeRole`, `countryCode`, `iataCode`, `icaoCode` y otros campos reales de `metadataJson`. Las propiedades inexistentes se omiten, nunca se suponen por el nombre del grupo. En POL, POE y POD pueden declararse como filtros de entrada `terminalType`, `transportMode`, `countryCode` e `iataCode`; Gateway los aplica por registro después de obtener los datos de Config. La previsualización GET y el endpoint público usan la misma selección y filtrado. Los contratos publicados previos no cambian automáticamente.

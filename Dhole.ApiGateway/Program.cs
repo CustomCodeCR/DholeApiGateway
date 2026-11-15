@@ -417,10 +417,15 @@ else
         await ThirdPartyApiEndpoints.MigrateStorageAsync(app.Services);
         thirdPartyReadiness.StorageReady = true;
         thirdPartyReadiness.Message = "Almacenamiento y migraciones de APIs para terceros disponibles.";
+        app.Logger.LogInformation("Third-party storage schema and EF migrations ready.");
     }
     catch (Exception exception)
     {
-        thirdPartyReadiness.Message = "No se pudo iniciar el almacenamiento de APIs para terceros. Revisá PostgreSQL y las migraciones de Gateway.";
+        var pgError = exception.GetBaseException() as Npgsql.PostgresException;
+        var sqlState = pgError?.SqlState;
+        thirdPartyReadiness.Message = "No se pudo iniciar el almacenamiento de APIs para terceros. " +
+            (sqlState is null ? "Revisá PostgreSQL y las migraciones de Gateway." :
+                "Código PostgreSQL SQLSTATE " + sqlState + ". Revisá el registro de Gateway.");
         app.Logger.LogError(exception, "Third-party migration failed; routes still registered; persistence returns 503.");
     }
 }

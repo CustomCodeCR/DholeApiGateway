@@ -1,3 +1,9 @@
+## [1.8.4] - 2026-11-15 (Corregir PostgreSQL 3F000 en API Manager)
+
+- PATCH DH-20261115-THIRDPARTY-SCHEMA-158: en el arranque garantiza la existencia idempotente de dhole_integrations y del esquema integrations antes de crear el historial de migraciones EF Core; corrige 3F000 en staging y master sin borrar bases, tablas, secretos ni claves.
+- Mantiene MigrateAsync para aplicar migraciones versionadas existentes y nuevas, sin usar EnsureCreated.
+- Registro de inicialización exitosa y SQLSTATE seguro en errores. El despliegue de Gateway falla visiblemente si el almacenamiento de terceros sigue sin estar listo.
+
 ## [1.8.3] - 2026-11-15 (Diagnóstico PostgreSQL sin modificación de datos)
 
 - PATCH DH-20261115-THIRDPARTY-STORAGE-READONLY-157: workflow de solo lectura en runner self-hosted para identificar código SQLSTATE, existencia de dhole_integrations, tablas e historial de EF sin imprimir secretos.

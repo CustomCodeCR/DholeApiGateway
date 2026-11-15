@@ -1,3 +1,8 @@
+## [1.8.3] - 2026-11-15 (Diagnóstico PostgreSQL sin modificación de datos)
+
+- PATCH DH-20261115-THIRDPARTY-STORAGE-READONLY-157: workflow de solo lectura en runner self-hosted para identificar código SQLSTATE, existencia de dhole_integrations, tablas e historial de EF sin imprimir secretos.
+- Módulos, contratos y API Keys sin cambios; no se ejecuta ningún DDL ni migración desde el diagnóstico.
+
 ## [1.8.2] - 2026-11-15 (API Manager PostgreSQL startup diagnostic)
 
 - PATCH DH-20261115-THIRDPARTY-STORAGE-DIAG-156: deploy de Gateway clasifica en logs del runner SQLSTATE y excepciones de migración PostgreSQL sin imprimir credenciales, cadenas de conexión ni datos sensibles.

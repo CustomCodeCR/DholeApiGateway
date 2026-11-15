@@ -2,9 +2,9 @@
   "schemaVersion": 1,
   "ecosystem": "Dhole",
   "component": "DholeApiGateway",
-  "version": "1.8.4",
+  "version": "1.8.5",
   "ecosystemVersion": "1.57.1",
-  "releaseId": "DH-20261115-THIRDPARTY-SCHEMA-158",
+  "releaseId": "DH-20261115-THIRDPARTY-SCHEMA-MESSAGE-159",
   "releaseStatus": "candidate-ci-and-staging-pending",
-  "businessReleaseId": "DH-20261115-THIRDPARTY-SCHEMA-158"
+  "businessReleaseId": "DH-20261115-THIRDPARTY-SCHEMA-MESSAGE-159"
 }

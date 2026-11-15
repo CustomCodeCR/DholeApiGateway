@@ -16,18 +16,17 @@ Esta capacidad **publica endpoints propios de Dhole** (Pricing, CRM, SRM, Config
 
 ## Aprovisionamiento
 
-El flag está deshabilitado por defecto tanto en `master` como en `develop`.
+El módulo de administración y el inventario de rutas se registran siempre, sin flags. La persistencia exige una conexión a PostgreSQL; si falta o falla la migración se responde HTTP 503 con el motivo, sin ocultar rutas como HTTP 404.
 
 Proporcionar mediante variables del servicio (sin poner secretos en el repositorio):
 
-**No hay que crear la base ni las tablas a mano.** El Gateway registra `ThirdPartyDbContext` y ejecuta `Database.MigrateAsync()` al iniciar, siempre que `ThirdParty__Enabled=true`. El proveedor EF Core de Npgsql crea `dhole_integrations` si no existe y aplica la migración inicial versionada para el esquema `integrations`. Las migraciones posteriores se ejecutan al reiniciar con una imagen actualizada.
+**No hay que crear la base ni las tablas a mano.** El Gateway registra `ThirdPartyDbContext` y ejecuta `Database.MigrateAsync()` al iniciar, cuando existe `ThirdParty__ConnectionString`. El proveedor EF Core de Npgsql crea `dhole_integrations` si no existe y aplica la migración inicial versionada para el esquema `integrations`. Las migraciones posteriores se ejecutan al reiniciar con una imagen actualizada.
 
 El usuario de PostgreSQL configurado en la cadena requiere permiso **CREATEDB** si la base todavía no existe y permisos **CREATE/ALTER** en la base y esquema para aplicar migraciones. Si no se conceden esos permisos a la identidad del Gateway, aprovisionar el almacenamiento con una identidad de migración en el despliegue. No es necesario un comando manual `psql CREATE DATABASE` para una instalación inicial con los permisos correctos.
 
 Si las tablas ya fueron creadas anteriormente por el arranque SQL manual (sin `__EFMigrationsHistory`), hacer una migración/baseline controlada antes de activar EF Core; no aplicar la migración inicial sobre esas tablas porque intentará volver a crearlas.
 
 ```env
-ThirdParty__Enabled=true
 ThirdParty__ConnectionString=Host=postgres;Database=dhole_integrations;Username=integration_api;Password=<desde gestor de secretos>;SSL Mode=Require
 ThirdParty__ServiceTokens__pricing-rate-detail=<JWT TECNICO CON ALCANCE DE SOLO LECTURA>
 ```
@@ -37,7 +36,6 @@ Un ejemplo de target aprobado para GET de Pricing, cuya ruta se verificó en `Ra
 ```json
 {
   "ThirdParty": {
-    "Enabled": false,
     "ConnectionString": "",
     "Targets": [
       {
@@ -57,11 +55,12 @@ Ese target es **solo un ejemplo**. La publicación requiere una identidad técni
 
 El servicio de destino se resuelve exclusivamente desde `Gateway:Routes`. Para publicar Operaciones en el futuro, desplegar su microservicio, registrar su ruta en Gateway, verificar el endpoint y agregar el target aprobado al catálogo. No hace falta crear otro módulo de administración.
 
-Con `ThirdParty__Enabled=true`, EF Core crea o actualiza automáticamente las tablas `integrations.public_endpoints`, `integrations.public_keys`, `integrations.public_usage` e `integrations.public_audit` en la base de integraciones y lleva el historial en `__EFMigrationsHistory`. El estado desactivado (`false`) no crea recursos y no publica endpoints. La identidad para migraciones puede ser distinta a la identidad de ejecución por seguridad. El Gateway registra un error si la migración falla y sigue sirviendo rutas internas sin publicar el módulo externo.
+Con una conexión de integración válida, EF Core crea o actualiza automáticamente las tablas `integrations.public_endpoints`, `integrations.public_keys`, `integrations.public_usage` e `integrations.public_audit` en la base de integraciones y lleva el historial en `__EFMigrationsHistory`. Si falta la conexión o falla la migración, los endpoints de lectura de catálogo siguen disponibles y las acciones dependientes de la base devuelven HTTP 503. La identidad para migraciones puede ser distinta de la identidad de ejecución, por seguridad.
 
 ## Administración
 
 ```text
+GET    /api/integrations/third-party/status
 GET    /api/integrations/third-party/catalog
 GET    /api/integrations/third-party/endpoints
 POST   /api/integrations/third-party/endpoints
@@ -71,7 +70,7 @@ POST   /api/integrations/third-party/endpoints/{id}/keys
 DELETE /api/integrations/third-party/keys/{keyId}
 ```
 
-Los contratos se editan en un drawer con controles Dhole. Las claves se emiten/revocan en esa misma pantalla.
+Los contratos se configuran en el espacio de trabajo del API Manager; las API Keys se crean y administran por separado y pueden vincularse a múltiples APIs.
 
 Contrato de muestra para el target anterior (se crea inactivo):
 

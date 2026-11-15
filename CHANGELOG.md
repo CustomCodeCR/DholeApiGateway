@@ -1,3 +1,7 @@
+## [1.8.5] - 2026-11-15 (Diagnóstico seguro de schema PostgreSQL)
+
+- PATCH DH-20261115-THIRDPARTY-SCHEMA-MESSAGE-159: limita a texto imprimible la causa del SQLSTATE 3F000 en la comprobación de solo lectura; permite distinguir schema ausente de search_path vacío sin exponer credenciales.
+
 ## [1.8.4] - 2026-11-15 (Corregir PostgreSQL 3F000 en API Manager)
 
 - PATCH DH-20261115-THIRDPARTY-SCHEMA-158: en el arranque garantiza la existencia idempotente de dhole_integrations y del esquema integrations antes de crear el historial de migraciones EF Core; corrige 3F000 en staging y master sin borrar bases, tablas, secretos ni claves.

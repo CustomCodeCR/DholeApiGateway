@@ -1,14 +1,14 @@
 {
   "schemaVersion": 1,
   "ecosystem": "Dhole",
-  "ecosystemVersion": "1.57.1",
-  "releaseId": "DH-20261115-THIRDPARTY-FK-SCHEMA-160",
-  "source": "api-manager-promotion-coordinated-release",
+  "ecosystemVersion": "1.58.0",
+  "releaseId": "DH-20261115-API-METADATA-161",
+  "source": "api-metadata-coordinated-release",
   "services": [
     {
       "key": "gateway",
       "component": "DholeApiGateway",
-      "version": "1.8.6",
+      "version": "1.9.0",
       "repository": "CustomCodeCR/DholeApiGateway"
     },
     {
@@ -92,13 +92,13 @@
     {
       "key": "web",
       "component": "DholeWeb",
-      "version": "1.57.1",
+      "version": "1.58.0",
       "repository": "CustomCodeCR/DholeWeb"
     },
     {
       "key": "system",
       "component": "DholeSystem",
-      "version": "1.57.1",
+      "version": "1.58.0",
       "repository": "CustomCodeCR/DholeSystem"
     }
   ]

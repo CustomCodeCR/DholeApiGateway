@@ -1,3 +1,8 @@
+## [1.8.2] - 2026-11-15 (API Manager PostgreSQL startup diagnostic)
+
+- PATCH DH-20261115-THIRDPARTY-STORAGE-DIAG-156: deploy de Gateway clasifica en logs del runner SQLSTATE y excepciones de migración PostgreSQL sin imprimir credenciales, cadenas de conexión ni datos sensibles.
+- La comprobación es solo de lectura y no modifica almacenamiento, tokens ni tablas.
+
 ## [1.8.1] - 2026-11-15 (API Manager: rutas siempre registradas y diagnóstico de storage)
 
 - PATCH DH-20261115-THIRD-PARTY-404-155: elimina ThirdParty:Enabled y registra rutas protegidas del API Manager independientemente de la disponibilidad de PostgreSQL.

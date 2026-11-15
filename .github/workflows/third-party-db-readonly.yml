@@ -47,6 +47,14 @@ jobs:
           # Never emit exception details, credentials, connection strings or query data.
           CODES="$(printf '%s\n' "$LOG" | grep -E 'PostgresException|SqlState:' |
             grep -oE '([[:space:]]|:)[A-Z0-9]{5}:' | tr -d ' :' | sort -u || true)"
+          # SQLSTATE 3F000 only identifies a missing namespace. Emit its
+          # printable, whitespace-limited schema message without SQL or secrets.
+          FIRST_SCHEMA_ERROR="$(printf '%s\n' "$LOG" | grep -m1 'Npgsql.PostgresException.*3F000:' || true)"
+          if [[ "$FIRST_SCHEMA_ERROR" == *'3F000:'* ]]; then
+            SCHEMA_MESSAGE="${FIRST_SCHEMA_ERROR#*3F000:}"
+            SCHEMA_MESSAGE="$(printf '%s' "$SCHEMA_MESSAGE" | LC_ALL=C tr -cd '[:alnum:] _."-' | cut -c1-120)"
+            echo "PostgreSQL schema message (sanitized): $SCHEMA_MESSAGE"
+          fi
           if [[ -n "$CODES" ]]; then
             while IFS= read -r code; do
               [[ -n "$code" ]] && echo "Postgres SQLSTATE: $code"

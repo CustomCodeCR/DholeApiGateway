@@ -60,11 +60,16 @@ jobs:
             exit 0
           fi
           # PostgreSQL catalog reads only. Authentication values stay inside the container.
-          DB_EXISTS="$(docker exec "$PG" sh -c 'PGPASSWORD="$POSTGRES_PASSWORD" psql -XAt -U "$POSTGRES_USER" -d postgres -c "SELECT count(*) FROM pg_database WHERE datname='\"'\"'dhole_integrations'\"'\"';"' 2>/dev/null || true)"
+          DB_EXISTS="$(printf '%s\n' "SELECT count(*) FROM pg_database WHERE datname = 'dhole_integrations';" |
+            docker exec -i "$PG" sh -c 'PGPASSWORD="$POSTGRES_PASSWORD" exec psql -XAt -U "$POSTGRES_USER" -d postgres' 2>/dev/null || true)"
           if [[ "$DB_EXISTS" != 1 ]]; then
             echo "dhole_integrations database exists: no (or catalog access denied)"
             exit 0
           fi
           echo "dhole_integrations database exists: yes"
-          META="$(docker exec "$PG" sh -c 'PGPASSWORD="$POSTGRES_PASSWORD" psql -XAt -U "$POSTGRES_USER" -d dhole_integrations -c "SELECT CASE WHEN to_regclass('\"'\"'integrations.public_endpoints'\"'\"') IS NULL THEN 0 ELSE 1 END, CASE WHEN to_regclass('\"'\"'integrations.public_keys'\"'\"') IS NULL THEN 0 ELSE 1 END, CASE WHEN to_regclass('\"'\"'integrations.public_key_endpoints'\"'\"') IS NULL THEN 0 ELSE 1 END, CASE WHEN to_regclass('\"'\"'public.\"__EFMigrationsHistory\"'\"'\"') IS NULL THEN 0 ELSE 1 END;"' 2>/dev/null || true)"
-          if [[ -n "$META" ]]; then echo "Read-only table existence (endpoints|keys|links|EF public history): $META"; fi
+          META="$(printf '%s\n' "SELECT count(*) FILTER (WHERE table_name='public_endpoints'), count(*) FILTER (WHERE table_name='public_keys'), count(*) FILTER (WHERE table_name='public_key_endpoints') FROM information_schema.tables WHERE table_schema='integrations';" |
+            docker exec -i "$PG" sh -c 'PGPASSWORD="$POSTGRES_PASSWORD" exec psql -XAt -U "$POSTGRES_USER" -d dhole_integrations' 2>/dev/null || true)"
+          if [[ -n "$META" ]]; then echo "Read-only integrations table existence counts (endpoints|keys|links): $META"; fi
+          HISTORY="$(printf '%s\n' "SELECT count(*) FROM information_schema.tables WHERE table_name='__EFMigrationsHistory';" |
+            docker exec -i "$PG" sh -c 'PGPASSWORD="$POSTGRES_PASSWORD" exec psql -XAt -U "$POSTGRES_USER" -d dhole_integrations' 2>/dev/null || true)"
+          if [[ -n "$HISTORY" ]]; then echo "EF migrations history table count: $HISTORY"; fi

@@ -7,6 +7,8 @@ using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 using Dhole.ApiGateway.Gateway;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.Options;
 using Npgsql;
 using NpgsqlTypes;
@@ -58,9 +60,16 @@ public static class ThirdPartyApiEndpoints
     {
         await using var scope = services.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<ThirdPartyDbContext>();
-        // Npgsql's EF database creator creates dhole_integrations if absent,
-        // provided the configured PostgreSQL role has CREATEDB privileges.
-        // Migrations own the schema; never mix EnsureCreated with Migrate.
+        // EF may attempt to create its __EFMigrationsHistory table inside
+        // the model's default 'integrations' schema BEFORE applying the first
+        // migration's EnsureSchema(). That produces SQLSTATE 3F000 on a fresh DB.
+        // Prepare the database/schema idempotently, then let EF own all tables.
+        // Never use EnsureCreated() or reset existing migration history.
+        var creator = db.GetService<IRelationalDatabaseCreator>();
+        if (!await creator.ExistsAsync(ct))
+            await creator.CreateAsync(ct);
+        await db.Database.ExecuteSqlRawAsync(
+            "CREATE SCHEMA IF NOT EXISTS integrations;", ct);
         await db.Database.MigrateAsync(ct);
     }
 

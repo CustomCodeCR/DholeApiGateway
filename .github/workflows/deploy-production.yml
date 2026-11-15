@@ -100,5 +100,18 @@ jobs:
           if grep -q 'password authentication failed' <<< "$LOG"; then echo "PostgreSQL authentication error"; fi
           if grep -q 'permission denied' <<< "$LOG"; then echo "PostgreSQL permission denied"; fi
 
+      - name: Verify API Manager PostgreSQL storage ready
+        shell: bash
+        run: |
+          set -euo pipefail
+          ID="$(docker compose --env-file "$DHOLE_ENV_FILE" -f "$COMPOSE_FILE" -p "$COMPOSE_PROJECT" ps -q api-gateway)"
+          LOG="$(docker logs --since 20m "$ID" 2>&1 || true)"
+          if grep -q 'Third-party storage schema and EF migrations ready' <<< "$LOG"; then
+            echo "API Manager PostgreSQL schema and migrations: READY"
+          else
+            echo "::error::API Manager PostgreSQL storage is not ready. Inspect sanitized SQLSTATE diagnostics."
+            exit 1
+          fi
+
       - name: Cleanup old images
         run: docker image prune -f

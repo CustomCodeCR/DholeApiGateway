@@ -112,11 +112,3 @@ Para las APIs de catálogos de Config, los campos `metadata` (objeto JSON comple
 Los contratos GET predeterminados POL, POE, POD, Incoterms, tamaños y tipos de contenedor y furgón están autorizados automáticamente a usar una **identidad técnica con alcance exclusivo de lectura** cuando Gateway dispone de su configuración Auth:Jwt válida. Publicarlos requiere una acción del administrador con `integrations.thirdparty.manage`; el consumo externo sigue requiriendo una API Key activa y vinculada a la API publicada. La generación del JWT interno ocurre únicamente después de validar esa clave, su vínculo, su estado y su cuota. No se envían credenciales al consumidor.
 
 Esta autorización automática **no** cubre operaciones POST/PUT/PATCH/DELETE, rutas descubiertas, catálogos no permitidos, recursos con datos de clientes ni otros servicios. Requieren tokens por ruta y revisión de permisos, aislamiento por cliente y pruebas de integración. La ausencia de credenciales sigue devolviendo 503 y bloquea la publicación. No se incorporan flags ni secretos al repositorio.
-
-## Valores fijos (DH-20261116-API-MANAGER-165)
-
-Las APIs POST/PUT/PATCH admiten `defaults` como diccionario de campo **interno** a valor JSON fijo. Cada valor se valida en Gateway contra el catálogo aprobado, no puede estar duplicado ni solapado con un campo publicado y se inyecta después de validar la API Key y su vínculo. El consumidor no puede reemplazarlo en el body público. Los contratos antiguos sin `defaults` conservan el comportamiento previo y no necesitan migración de PostgreSQL: el contrato se guarda como JSONB.
-
-Para solicitudes de tarifas es posible seleccionar en el editor una cuenta de CRM visible al administrador y tomar su `displayName`, `executiveUserId` y nombre del ejecutivo asignado. Estos valores **se guardan como snapshot en el contrato**: un cambio posterior de ejecutivo en CRM requiere actualizar el contrato, y Pricing sigue validando la identidad técnica autorizada para esa solicitud. No se confiere automáticamente el permiso de crear solicitudes.
-
-El inventario de rutas se consulta con un JWT técnico temporal que contiene únicamente el scope `integrations.thirdparty.manage`; el token de sesión del usuario no se reenvía. Si la consulta al microservicio falla, la UI presenta las operaciones aprobadas configuradas, sin habilitarlas automáticamente.

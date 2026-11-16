@@ -4,7 +4,7 @@
   "component": "DholeApiGateway",
   "version": "1.10.0",
   "ecosystemVersion": "1.63.0",
-  "releaseId": "DH-20261116-API-MANAGER-165",
+  "releaseId": "DH-20261116-API-ROUTES-DEFAULTS-165",
   "releaseStatus": "candidate-ci-and-staging-pending",
-  "businessReleaseId": "DH-20261116-API-MANAGER-165"
+  "businessReleaseId": "DH-20261116-API-ROUTES-DEFAULTS-165"
 }

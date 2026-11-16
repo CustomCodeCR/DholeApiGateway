@@ -57,7 +57,10 @@ public static class ThirdPartyRouteDiscovery
         return new ApprovedTarget(code, parts[1], method, path, "Ruta de servicio registrada; publicación sujeta a identidad técnica específica.")
         {
             Ready = !string.IsNullOrWhiteSpace(cfg["ThirdParty:ServiceTokens:" + code]),
-            InputFields = required,
+            InputFields = method is "POST" or "PUT" or "PATCH" or "DELETE"
+                ? [..required, new ThirdPartyFieldOption("body", "body", "Cuerpo JSON", false, false)
+                    { Type = "JSON", Group = "Request" }]
+                : required,
             OutputFields = [],
         };
     }
@@ -73,7 +76,7 @@ public static class ThirdPartyRouteDiscovery
 
     public static async Task<RouteDiscoveryResult> DiscoverAsync(
         string service, IConfiguration cfg, GatewayOptions gateway,
-        IHttpClientFactory clients, string? technicalAuthorization, CancellationToken ct)
+        IHttpClientFactory clients, string? adminAuthorization, CancellationToken ct)
     {
         var route = gateway.Routes.FirstOrDefault(r =>
             r.Prefix.Equals("/api/" + service, StringComparison.OrdinalIgnoreCase));
@@ -84,9 +87,9 @@ public static class ThirdPartyRouteDiscovery
 
         // Prefer the authenticated runtime endpoint registry. Unlike Swagger, it exists
         // in production and reflects the actually deployed minimal API route table.
-        // A limited technical JWT is forwarded ONLY to the fixed, registered service root.
-        if (!string.IsNullOrWhiteSpace(technicalAuthorization) &&
-            technicalAuthorization.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
+        // The caller's admin JWT is forwarded ONLY to the fixed, registered service root.
+        if (!string.IsNullOrWhiteSpace(adminAuthorization) &&
+            adminAuthorization.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
         {
             try
             {
@@ -95,7 +98,7 @@ public static class ThirdPartyRouteDiscovery
                 var internalUri = new Uri(root.GetLeftPart(UriPartial.Authority) + "/api/internal/third-party-route-catalog");
                 using var req = new HttpRequestMessage(HttpMethod.Get, internalUri);
                 req.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue(
-                    "Bearer", technicalAuthorization[7..].Trim());
+                    "Bearer", adminAuthorization[7..].Trim());
                 using var response = await clients.CreateClient("third-party-upstream")
                     .SendAsync(req, HttpCompletionOption.ResponseHeadersRead, timeout.Token);
                 if (response.IsSuccessStatusCode && response.Content.Headers.ContentLength is not > 2_000_000)
@@ -213,16 +216,9 @@ public static class ThirdPartyRouteDiscovery
                 if (ct.IsCancellationRequested) throw;
             }
         }
-        // Even when runtime inventory is unreachable (e.g. authentication or networking),
-        // never hide administrator-approved targets from the module's route explorer.
-        var fallback = (cfg.GetSection("ThirdParty:Targets").Get<List<ApprovedTarget>>() ?? [])
-            .Where(t => t.Service.Equals(service, StringComparison.OrdinalIgnoreCase))
-            .Select(t => t with { Ready = ThirdPartyServiceIdentity.IsReady(t, cfg),
-                InputFields = ThirdPartyFieldCatalog.Inputs(t.Code),
-                OutputFields = ThirdPartyFieldCatalog.Outputs(t.Code) }).ToArray();
         return new(service, false,
-            "No fue posible consultar el inventario interno del servicio. Se muestran las rutas aprobadas; comprobá el acceso al catálogo interno y OpenAPI en el despliegue.",
-            fallback);
+            "El servicio no publica OpenAPI en este entorno. Podés registrar una ruta conocida manualmente como borrador; no se activa sin credencial específica.",
+            []);
     }
 
     public static IReadOnlyList<string> PathNames(string path) =>

@@ -2,9 +2,9 @@
   "schemaVersion": 1,
   "ecosystem": "Dhole",
   "component": "DholeApiGateway",
-  "version": "1.10.1",
-  "ecosystemVersion": "1.63.1",
-  "releaseId": "DH-20261116-API-CRM-166",
+  "version": "1.10.2",
+  "ecosystemVersion": "1.63.2",
+  "releaseId": "DH-20261116-API-PRICING-IDENTITY-167",
   "releaseStatus": "candidate-ci-and-staging-pending",
-  "businessReleaseId": "DH-20261116-API-CRM-166"
+  "businessReleaseId": "DH-20261116-API-PRICING-IDENTITY-167"
 }

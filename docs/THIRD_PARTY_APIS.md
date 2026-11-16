@@ -12,7 +12,7 @@ Esta capacidad **publica endpoints propios de Dhole** (Pricing, CRM, SRM, Config
 - Las solicitudes externas se reciben en `/api/external/{slug}` o `/api/external/{slug}/{id}` usando la cabecera `X-Api-Key`. No se reenvía la clave a los microservicios.
 - Los campos de entrada y los campos devueltos están en allowlists explícitas. Las rutas internas, secretos y respuestas completas no se devuelven al tercero.
 - Se registra operación, HTTP status, clave y duración; no se guardan cuerpos ni claves en la auditoría.
-- El backend se comunica con el microservicio usando **identidades técnicas propias y limitadas al recurso/cliente autorizado**. Nunca usar un JWT de superadministrador ni credenciales de Dynamics.
+- El backend se comunica con el microservicio usando **identidades técnicas propias y limitadas al recurso/cliente autorizado**. Nunca usar un JWT de superadministrador ni credenciales de Dynamics. Para los ocho catálogos fijos GET de Config, Gateway emite un JWT de servicio con solo `config.catalog-items.view` usando la configuración JWT del ecosistema; no se utiliza la sesión del administrador. Para el resto de operaciones se exige `ThirdParty:ServiceTokens:<target-code>` explícito, limitado por usuario/cliente y scope.
 
 ## Aprovisionamiento
 
@@ -106,3 +106,9 @@ No habilitar sin pruebas de aislamiento de clientes, autorización de cada servi
 ## Metadatos completos de Config (DH-20261115-API-METADATA-161)
 
 Para las APIs de catálogos de Config, los campos `metadata` (objeto JSON completo) y `metadataJson` (valor original) están disponibles como respuesta. Se pueden seleccionar `terminalType`, `transportMode`, `routeRole`, `countryCode`, `iataCode`, `icaoCode` y otros campos reales de `metadataJson`. Las propiedades inexistentes se omiten, nunca se suponen por el nombre del grupo. En POL, POE y POD pueden declararse como filtros de entrada `terminalType`, `transportMode`, `countryCode` e `iataCode`; Gateway los aplica por registro después de obtener los datos de Config. La previsualización GET y el endpoint público usan la misma selección y filtrado. Los contratos publicados previos no cambian automáticamente.
+
+## Publicación de catálogos Config
+
+Los contratos GET predeterminados POL, POE, POD, Incoterms, tamaños y tipos de contenedor y furgón están autorizados automáticamente a usar una **identidad técnica con alcance exclusivo de lectura** cuando Gateway dispone de su configuración Auth:Jwt válida. Publicarlos requiere una acción del administrador con `integrations.thirdparty.manage`; el consumo externo sigue requiriendo una API Key activa y vinculada a la API publicada. La generación del JWT interno ocurre únicamente después de validar esa clave, su vínculo, su estado y su cuota. No se envían credenciales al consumidor.
+
+Esta autorización automática **no** cubre operaciones POST/PUT/PATCH/DELETE, rutas descubiertas, catálogos no permitidos, recursos con datos de clientes ni otros servicios. Requieren tokens por ruta y revisión de permisos, aislamiento por cliente y pruebas de integración. La ausencia de credenciales sigue devolviendo 503 y bloquea la publicación. No se incorporan flags ni secretos al repositorio.

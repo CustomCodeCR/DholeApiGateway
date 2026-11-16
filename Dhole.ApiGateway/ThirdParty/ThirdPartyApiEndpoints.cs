@@ -858,10 +858,14 @@ public static class ThirdPartyApiEndpoints
         {
             foreach (var (field, value) in d.Defaults)
             {
-                if (value.ValueKind is JsonValueKind.Undefined ||
+                if (!Source.IsMatch(field) || value.ValueKind is JsonValueKind.Undefined ||
                     field.Length > 160 || value.GetRawText().Length > 8192)
                     return "Valor predeterminado inválido o demasiado largo.";
-                if (d.Inputs.Any(x => x.Internal == field))
+                if (d.Inputs.Any(x => x.Internal == field ||
+                    x.Internal.StartsWith(field + ".", StringComparison.Ordinal) ||
+                    field.StartsWith(x.Internal + ".", StringComparison.Ordinal)) ||
+                    d.Defaults.Keys.Any(x => x != field && (x.StartsWith(field + ".", StringComparison.Ordinal) ||
+                        field.StartsWith(x + ".", StringComparison.Ordinal))))
                     return "Un campo no puede ser público y predeterminado a la vez.";
                 if (dynamicRoute)
                 {

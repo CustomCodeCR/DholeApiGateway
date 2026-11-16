@@ -1,14 +1,14 @@
 {
   "schemaVersion": 1,
   "ecosystem": "Dhole",
-  "ecosystemVersion": "1.62.1",
-  "releaseId": "DH-20261116-API-MANAGER-164",
-  "source": "api-manager-config-identity-and-editing",
+  "ecosystemVersion": "1.63.0",
+  "releaseId": "DH-20261116-API-MANAGER-165",
+  "source": "api-manager-defaults-and-route-discovery",
   "services": [
     {
       "key": "gateway",
       "component": "DholeApiGateway",
-      "version": "1.9.1",
+      "version": "1.10.0",
       "repository": "CustomCodeCR/DholeApiGateway"
     },
     {
@@ -92,13 +92,13 @@
     {
       "key": "web",
       "component": "DholeWeb",
-      "version": "1.61.1",
+      "version": "1.62.0",
       "repository": "CustomCodeCR/DholeWeb"
     },
     {
       "key": "system",
       "component": "DholeSystem",
-      "version": "1.62.1",
+      "version": "1.63.0",
       "repository": "CustomCodeCR/DholeSystem"
     }
   ]

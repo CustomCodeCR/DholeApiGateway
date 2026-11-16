@@ -57,7 +57,10 @@ public static class ThirdPartyRouteDiscovery
         return new ApprovedTarget(code, parts[1], method, path, "Ruta de servicio registrada; publicación sujeta a identidad técnica específica.")
         {
             Ready = !string.IsNullOrWhiteSpace(cfg["ThirdParty:ServiceTokens:" + code]),
-            InputFields = required,
+            InputFields = method is "POST" or "PUT" or "PATCH" or "DELETE"
+                ? [..required, new ThirdPartyFieldOption("body", "body", "Cuerpo JSON", false, false)
+                    { Type = "JSON", Group = "Request" }]
+                : required,
             OutputFields = [],
         };
     }

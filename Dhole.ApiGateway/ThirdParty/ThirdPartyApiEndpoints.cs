@@ -18,7 +18,8 @@ namespace Dhole.ApiGateway.ThirdParty;
 
 // A published contract never contains credentials or a free-form upstream URL.
 // Targets are explicitly approved in ThirdParty:Targets configuration.
-public sealed record PublishedField(string Public, string Internal, bool Required = false);
+// Defaults belong to the admin-owned contract, not to an external caller.
+public sealed record PublishedField(string Public, string Internal, bool Required = false, JsonNode? DefaultValue = null);
 public sealed record PublishedEndpoint(
     Guid Id, string Name, string Slug, string Target,
     List<PublishedField> Inputs, List<PublishedField> Outputs,
@@ -599,10 +600,14 @@ public static class ThirdPartyApiEndpoints
                     foreach (var field in definition.Inputs)
                     {
                         var flatProvided = input.TryGetPropertyValue(field.Public, out var flat);
-                        var nested = field.Internal != field.Public ? GetNode(input, field.Internal) : null;
-                        if (flatProvided && nested is not null)
+                        var nestedProvided = field.Internal != field.Public &&
+                            ThirdPartyFixedFields.ContainsPath(input, field.Internal);
+                        var nested = nestedProvided ? GetNode(input, field.Internal) : null;
+                        if (field.DefaultValue is not null && (flatProvided || nestedProvided))
+                            return Results.BadRequest(new { message = "No se permite sobrescribir el valor fijo: " + field.Public });
+                        if (flatProvided && nestedProvided)
                             return Results.BadRequest(new { message = "Campo duplicado: " + field.Public });
-                        var value = flatProvided ? flat : nested;
+                        var value = field.DefaultValue?.DeepClone() ?? (flatProvided ? flat : nested);
                         if (field.Required && value is null)
                             return Results.BadRequest(new { message = "Falta " + field.Public });
                         if (value is null) continue;
@@ -823,6 +828,8 @@ public static class ThirdPartyApiEndpoints
         // Legacy templates have strictly typed field catalogues. Dynamic routes are
         // selected by administrators; arbitrary fields are constrained by the source
         // name grammar and by the route-scoped upstream JWT.
+        var fixedError = ThirdPartyFixedFields.Validate(definition: d, target);
+        if (fixedError is not null) return fixedError;
         var allowedInputs = ThirdPartyFieldCatalog.Inputs(target.Code);
         var allowedOutputs = ThirdPartyFieldCatalog.Outputs(target.Code);
         if (dynamicRoute)

@@ -1,14 +1,14 @@
 {
   "schemaVersion": 1,
   "ecosystem": "Dhole",
-  "ecosystemVersion": "1.62.1",
-  "releaseId": "DH-20261116-API-MANAGER-164",
-  "source": "api-manager-config-identity-and-editing",
+  "ecosystemVersion": "1.63.0",
+  "releaseId": "DH-20261116-API-ROUTES-DEFAULTS-165",
+  "source": "api-manager-runtime-route-discovery-and-fixed-params",
   "services": [
     {
       "key": "gateway",
       "component": "DholeApiGateway",
-      "version": "1.9.1",
+      "version": "1.10.0",
       "repository": "CustomCodeCR/DholeApiGateway"
     },
     {

@@ -1,3 +1,9 @@
+## [1.9.1] - 2026-11-16 (API Manager: identidad técnica limitada para catálogos Config)
+
+- PATCH DH-20261116-API-MANAGER-164: permite publicar los ocho catálogos GET de Config mediante identidad técnica emitida por Gateway con scope exclusivo `config.catalog-items.view`, sin usar la sesión ni permisos del administrador.
+- El JWT interno se genera por solicitud, solo para rutas fijas de catálogos permitidas y configuradas; conserva los tokens explícitos por ruta para otros servicios y deniega publicación si no hay credenciales.
+- Mantiene API Keys independientes, límites, auditoría, control por contrato y aislamiento del resto de operaciones. Incluye pruebas negativas de acceso y regresión de identidad.
+
 ## [1.9.0] - 2026-11-15 (API Manager: metadatos completos de Config)
 
 - MINOR DH-20261115-API-METADATA-161: las ocho APIs de catálogos permiten seleccionar metadataJson, el objeto metadata completo y propiedades de cada registro, incluidos terminalType (CY/SD/APT), transportMode, routeRole, país y códigos IATA/ICAO.

@@ -1,4 +1,5 @@
 using System.Net;
+using CustomCodeFramework.Auth.Abstractions;
 using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text;
@@ -479,7 +480,7 @@ public static class ThirdPartyApiEndpoints
         {
         app.MapMethods(externalRoute, SupportedMethods,
             async (HttpContext ctx, IConfiguration cfg, IOptions<GatewayOptions> gateway,
-                IHttpClientFactory clients, string slug, string? id) =>
+                ITokenService tokenIssuer, IHttpClientFactory clients, string slug, string? id) =>
             {
                 var ct = ctx.RequestAborted;
                 if (id is not null && !Identifier.IsMatch(id)) return Results.BadRequest();
@@ -540,7 +541,7 @@ public static class ThirdPartyApiEndpoints
                 var prefix = "/api/" + target.Service;
                 var route = gateway.Value.Routes.FirstOrDefault(r =>
                     r.Prefix.Equals(prefix, StringComparison.OrdinalIgnoreCase));
-                var serviceCredential = cfg["ThirdParty:ServiceTokens:" + target.Code];
+                var serviceCredential = ThirdPartyServiceIdentity.GetCredential(target, cfg, tokenIssuer);
                 if (route is null || string.IsNullOrWhiteSpace(serviceCredential))
                     return Results.Problem("La identidad interna de integración no está configurada.", statusCode: 503);
 
@@ -816,7 +817,7 @@ public static class ThirdPartyApiEndpoints
             return "Nombre o identificador de API inválido.";
         var target = ResolveTarget(d.Target, cfg, gateway);
         if (target is null) return "Seleccioná un endpoint interno aprobado.";
-        if (d.Enabled && string.IsNullOrWhiteSpace(cfg["ThirdParty:ServiceTokens:" + target.Code]))
+        if (d.Enabled && !ThirdPartyServiceIdentity.IsReady(target, cfg))
             return "Configurá la identidad técnica de esta operación antes de publicarla.";
         var dynamicRoute = d.Target.StartsWith("route.", StringComparison.Ordinal);
         // Legacy templates have strictly typed field catalogues. Dynamic routes are
@@ -888,7 +889,7 @@ public static class ThirdPartyApiEndpoints
                           !string.IsNullOrWhiteSpace(t.CatalogSlug) &&
                           Regex.IsMatch(t.CatalogSlug, "^[a-z0-9-]{2,64}$"))))
             .Select(t => t with {
-                Ready = !string.IsNullOrWhiteSpace(cfg["ThirdParty:ServiceTokens:" + t.Code]),
+                Ready = ThirdPartyServiceIdentity.IsReady(t, cfg),
                 InputFields = ThirdPartyFieldCatalog.Inputs(t.Code),
                 OutputFields = ThirdPartyFieldCatalog.Outputs(t.Code),
                 NestedInputFields = ThirdPartyFieldCatalog.Inputs(t.Code)

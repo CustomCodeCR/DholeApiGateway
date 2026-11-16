@@ -591,10 +591,13 @@ public static class ThirdPartyApiEndpoints
                 else if (definition.Inputs.Count > 0)
                 {
                     JsonObject? input;
-                    try { input = await ctx.Request.ReadFromJsonAsync<JsonObject>(cancellationToken: ct); }
+                    try { input = ctx.Request.ContentLength is 0
+                        ? new JsonObject()
+                        : await ctx.Request.ReadFromJsonAsync<JsonObject>(cancellationToken: ct); }
                     catch (Exception ex) when (ex is JsonException or BadHttpRequestException or InvalidOperationException)
                     { return Results.BadRequest(new { message = "JSON inválido." }); }
-                    if (input is null || !ValidIncomingFields(input, definition.Inputs))
+                    input ??= new JsonObject();
+                    if (!ValidIncomingFields(input, definition.Inputs))
                         return Results.BadRequest(new { message = "El cuerpo contiene campos no publicados." });
                     body = new JsonObject();
                     foreach (var field in definition.Inputs)
@@ -828,7 +831,7 @@ public static class ThirdPartyApiEndpoints
         // Legacy templates have strictly typed field catalogues. Dynamic routes are
         // selected by administrators; arbitrary fields are constrained by the source
         // name grammar and by the route-scoped upstream JWT.
-        var fixedError = ThirdPartyFixedFields.Validate(definition: d, target);
+        var fixedError = ThirdPartyFixedFields.Validate(d, target);
         if (fixedError is not null) return fixedError;
         var allowedInputs = ThirdPartyFieldCatalog.Inputs(target.Code);
         var allowedOutputs = ThirdPartyFieldCatalog.Outputs(target.Code);

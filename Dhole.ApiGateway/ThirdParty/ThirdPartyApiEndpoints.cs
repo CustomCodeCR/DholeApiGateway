@@ -550,7 +550,7 @@ public static class ThirdPartyApiEndpoints
                 var prefix = "/api/" + target.Service;
                 var route = gateway.Value.Routes.FirstOrDefault(r =>
                     r.Prefix.Equals(prefix, StringComparison.OrdinalIgnoreCase));
-                var serviceCredential = ThirdPartyServiceIdentity.GetCredential(target, cfg, tokenIssuer);
+                var serviceCredential = ThirdPartyServiceIdentity.GetCredential(target, cfg, tokenIssuer, definition);
                 if (route is null || string.IsNullOrWhiteSpace(serviceCredential))
                     return Results.Problem("La identidad interna de integración no está configurada.", statusCode: 503);
 
@@ -839,6 +839,15 @@ public static class ThirdPartyApiEndpoints
         if (target is null) return "Seleccioná un endpoint interno aprobado.";
         if (d.Enabled && !ThirdPartyServiceIdentity.IsReady(target, cfg))
             return "Configurá la identidad técnica de esta operación antes de publicarla.";
+        if (d.Enabled && ThirdPartyServiceIdentity.UsesAutomaticPricingRequestIdentity(target, cfg))
+        {
+            if (d.Inputs.Any(field => field.Internal == "sellerUserId"))
+                return "El vendedor no puede ser un campo público: fijalo desde CRM o dejalo vacío para Castro Fallas.";
+            if (d.Defaults?.TryGetValue("sellerUserId", out var sellerDefault) == true &&
+                (sellerDefault.ValueKind != JsonValueKind.String ||
+                 !Guid.TryParse(sellerDefault.GetString(), out var sellerId) || sellerId == Guid.Empty))
+                return "El vendedor predeterminado debe ser un usuario válido de Auth.";
+        }
         var dynamicRoute = d.Target.StartsWith("route.", StringComparison.Ordinal);
         // Legacy templates have strictly typed field catalogues. Dynamic routes are
         // selected by administrators; arbitrary fields are constrained by the source

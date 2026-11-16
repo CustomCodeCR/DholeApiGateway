@@ -1,3 +1,8 @@
+## [1.10.1] - 2026-11-16 (API Manager CRM preset release registry)
+
+- PATCH DH-20261116-API-MANAGER-166: actualiza registro de versiones del ecosistema para selector de clientes/prospectos y el ejecutivo institucional Castro Fallas en DholeWeb 1.62.1. Gateway conserva los valores predeterminados fijos, permisos y contratos del release anterior.
+- DholeApiGateway 1.10.0 → 1.10.1; Dhole global 1.63.0 → 1.63.1; sin cambios de permisos, flujo REST ni reglas realtime.
+
 ## [1.10.0] - 2026-11-16 (API Manager: valores predeterminados protegidos)
 
 - MINOR DH-20261116-API-MANAGER-165: contratos POST/PUT/PATCH soportan valores predeterminados del lado del servidor, restringidos a campos aprobados y bloqueados para el consumidor externo; contratos antiguos mantienen compatibilidad JSONB.

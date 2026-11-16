@@ -213,9 +213,16 @@ public static class ThirdPartyRouteDiscovery
                 if (ct.IsCancellationRequested) throw;
             }
         }
+        // Even when runtime inventory is unreachable (e.g. authentication or networking),
+        // never hide administrator-approved targets from the module's route explorer.
+        var fallback = (cfg.GetSection("ThirdParty:Targets").Get<List<ApprovedTarget>>() ?? [])
+            .Where(t => t.Service.Equals(service, StringComparison.OrdinalIgnoreCase))
+            .Select(t => t with { Ready = ThirdPartyServiceIdentity.IsReady(t, cfg),
+                InputFields = ThirdPartyFieldCatalog.Inputs(t.Code),
+                OutputFields = ThirdPartyFieldCatalog.Outputs(t.Code) }).ToArray();
         return new(service, false,
-            "El servicio no publica OpenAPI en este entorno. Podés registrar una ruta conocida manualmente como borrador; no se activa sin credencial específica.",
-            []);
+            "No fue posible consultar el inventario interno del servicio. Se muestran las rutas aprobadas; comprobá el acceso al catálogo interno y OpenAPI en el despliegue.",
+            fallback);
     }
 
     public static IReadOnlyList<string> PathNames(string path) =>

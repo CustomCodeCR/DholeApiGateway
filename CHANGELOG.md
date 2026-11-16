@@ -1,3 +1,9 @@
+## [1.10.3] - 2026-11-16 (DholeSystem checkout resiliente en deploy)
+
+- PATCH DH-20261116-GATEWAY-DEPLOY-DNS-168: ambos workflows de Gateway usan un helper compartido para clonar la infraestructura de la rama correspondiente con hasta cuatro intentos y esperas acotadas ante fallos transitorios de DNS o red.
+- Solo acepta clones completos con Compose y prepare-environments.sh; evita reutilizar infraestructura previa, diagnostica fallos persistentes del DNS del runner y falla sin construir ni desplegar una imagen nueva.
+- Mantiene deploy automático por develop/master, validaciones de servidor, Docker, API Keys y configuración de seguridad.
+
 ## [1.10.2] - 2026-11-16 (Identidad técnica para Solicitar tarifa)
 
 - PATCH DH-20261116-API-PRICING-IDENTITY-167: Gateway emite JWT efímero con scope exclusivo `pricing.rate-request.create` para el POST aprobado `pricing-rate-request-create`, sin token manual ni flags.

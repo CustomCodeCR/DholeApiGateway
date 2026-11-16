@@ -1,3 +1,8 @@
+## [1.10.1] - 2026-11-16 (API Manager: vendedor institucional Castro Fallas)
+
+- PATCH DH-20261116-API-CRM-166: `sellerUserId` deja de ser obligatorio en el contrato externo de solicitud de tarifas. Pricing utiliza el usuario autenticado de la identidad técnica si no se especifica, sin impersonación ni elevación.
+- Los vendedores reales de cuentas y prospectos se fijan explícitamente desde CRM y continúan sujetos a la validación de delegación de Pricing. No se altera la base de datos ni la autenticación.
+
 ## [1.10.0] - 2026-11-16 (API Manager: valores predeterminados protegidos)
 
 - MINOR DH-20261116-API-MANAGER-165: contratos POST/PUT/PATCH soportan valores predeterminados del lado del servidor, restringidos a campos aprobados y bloqueados para el consumidor externo; contratos antiguos mantienen compatibilidad JSONB.

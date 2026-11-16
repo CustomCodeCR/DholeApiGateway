@@ -1,3 +1,8 @@
+## [1.10.0] - 2026-11-16 (Runtime route discovery y valores fijos en APIs externas)
+
+- MINOR DH-20261116-API-ROUTES-DEFAULTS-165: publica el contrato de valores fijos administrados en POST/PUT/PATCH. Gateway inyecta valores predeterminados al mapear la solicitud y rechaza que el consumidor los reemplace, incluso mediante JSON anidado.
+- Las rutas dinámicas ofrecen mapeo del cuerpo JSON y conservan controles de credenciales, API Keys, autorizaciones y auditoría. Incluye pruebas de validación de identificadores y métodos.
+
 ## [1.9.1] - 2026-11-16 (API Manager: identidad técnica limitada para catálogos Config)
 
 - PATCH DH-20261116-API-MANAGER-164: permite publicar los ocho catálogos GET de Config mediante identidad técnica emitida por Gateway con scope exclusivo `config.catalog-items.view`, sin usar la sesión ni permisos del administrador.

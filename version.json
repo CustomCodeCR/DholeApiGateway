@@ -2,9 +2,9 @@
   "schemaVersion": 1,
   "ecosystem": "Dhole",
   "component": "DholeApiGateway",
-  "version": "1.9.1",
-  "ecosystemVersion": "1.62.1",
-  "releaseId": "DH-20261116-API-MANAGER-164",
+  "version": "1.10.0",
+  "ecosystemVersion": "1.63.0",
+  "releaseId": "DH-20261116-API-ROUTES-DEFAULTS-165",
   "releaseStatus": "candidate-ci-and-staging-pending",
-  "businessReleaseId": "DH-20261116-API-MANAGER-164"
+  "businessReleaseId": "DH-20261116-API-ROUTES-DEFAULTS-165"
 }

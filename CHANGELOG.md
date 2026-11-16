@@ -1,3 +1,9 @@
+## [1.10.0] - 2026-11-16 (API Manager: valores predeterminados protegidos)
+
+- MINOR DH-20261116-API-MANAGER-165: contratos POST/PUT/PATCH soportan valores predeterminados del lado del servidor, restringidos a campos aprobados y bloqueados para el consumidor externo; contratos antiguos mantienen compatibilidad JSONB.
+- Reconoce campos obligatorios cubiertos por defaults y preserva controles de API Key, cuotas, identidad técnica e idempotencia.
+- El explorador consulta el inventario completo de los microservicios usando un JWT técnico temporal con scope exclusivo `integrations.thirdparty.manage`, sin exponer ni reenviar el JWT de usuario. Ante fallos muestra las rutas aprobadas y diagnostica el problema, sin presentar una lista vacía.
+
 ## [1.9.1] - 2026-11-16 (API Manager: identidad técnica limitada para catálogos Config)
 
 - PATCH DH-20261116-API-MANAGER-164: permite publicar los ocho catálogos GET de Config mediante identidad técnica con scope exclusivo config.catalog-items.view, sin usar la sesión ni permisos del administrador.

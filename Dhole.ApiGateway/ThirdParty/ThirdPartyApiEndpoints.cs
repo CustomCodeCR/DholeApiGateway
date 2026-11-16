@@ -22,7 +22,7 @@ public sealed record PublishedField(string Public, string Internal, bool Require
 public sealed record PublishedEndpoint(
     Guid Id, string Name, string Slug, string Target,
     List<PublishedField> Inputs, List<PublishedField> Outputs,
-    string? ResponseRoot, bool Enabled);
+    string? ResponseRoot, bool Enabled, Dictionary<string, JsonElement>? Defaults = null);
 public sealed record ApprovedTarget(string Code, string Service, string Method, string Path, string Description)
 {
     // Only indicates whether an internal service credential was configured;
@@ -88,11 +88,20 @@ public static class ThirdPartyApiEndpoints
             Authorized(ctx) ? Results.Ok(ThirdPartyRouteDiscovery.Services(gateway.Value)) : Results.Forbid());
 
         admin.MapGet("/discover/{service}", async (HttpContext ctx, string service, IConfiguration cfg,
-            IOptions<GatewayOptions> gateway, IHttpClientFactory clients) =>
+            IOptions<GatewayOptions> gateway, IHttpClientFactory clients, ITokenService issuer) =>
         {
             if (!Authorized(ctx)) return Results.Forbid();
+            // Use a fresh, narrowly-scoped machine identity for this metadata-only
+            // operation. Never forward the administrator's user session downstream.
+            var catalogToken = issuer.CreateToken(new TokenRequest
+            {
+                UserId = "31b0f3f4-9187-4667-b85c-b871ce6399ab",
+                UserName = "dhole-route-discovery",
+                UserType = "service",
+                Scopes = ["integrations.thirdparty.manage"],
+            });
             return Results.Ok(await ThirdPartyRouteDiscovery.DiscoverAsync(
-                service, cfg, gateway.Value, clients, ctx.Request.Headers.Authorization.ToString(), ctx.RequestAborted));
+                service, cfg, gateway.Value, clients, "Bearer " + catalogToken, ctx.RequestAborted));
         });
 
         admin.MapPost("/resolve", (HttpContext ctx, IConfiguration cfg, IOptions<GatewayOptions> gateway,
@@ -584,15 +593,26 @@ public static class ThirdPartyApiEndpoints
                     if (ctx.Request.Query.Keys.Any(k => !definition.Inputs.Any(f => f.Public == k)))
                         return Results.BadRequest(new { message = "Parámetro no publicado." });
                 }
-                else if (definition.Inputs.Count > 0)
+                else if (definition.Inputs.Count > 0 || definition.Defaults is { Count: > 0 })
                 {
                     JsonObject? input;
-                    try { input = await ctx.Request.ReadFromJsonAsync<JsonObject>(cancellationToken: ct); }
+                    try { input = ctx.Request.ContentLength is > 0
+                        ? await ctx.Request.ReadFromJsonAsync<JsonObject>(cancellationToken: ct)
+                        : new JsonObject(); }
                     catch (Exception ex) when (ex is JsonException or BadHttpRequestException or InvalidOperationException)
                     { return Results.BadRequest(new { message = "JSON inválido." }); }
                     if (input is null || !ValidIncomingFields(input, definition.Inputs))
                         return Results.BadRequest(new { message = "El cuerpo contiene campos no publicados." });
                     body = new JsonObject();
+                    // Server-side fixed values never appear in the public input allowlist.
+                    // A consumer submitting any locked field is rejected by ValidIncomingFields.
+                    foreach (var (field, value) in definition.Defaults ?? [])
+                    {
+                        var internalPath = dynamicRoute && field.StartsWith("body.", StringComparison.Ordinal)
+                            ? field[5..] : field;
+                        var node = JsonNode.Parse(value.GetRawText());
+                        SetNode(body, internalPath, node);
+                    }
                     foreach (var field in definition.Inputs)
                     {
                         var flatProvided = input.TryGetPropertyValue(field.Public, out var flat);
@@ -837,18 +857,48 @@ public static class ThirdPartyApiEndpoints
                  !requiredPath.Contains(f.Internal[5..])))
                 return "No se permite alterar parámetros de ruta no declarados.";
         }
+        if (d.Defaults is { Count: > 0 } && target.Method is not ("POST" or "PUT" or "PATCH"))
+            return "Los valores predeterminados solo se permiten en POST, PUT y PATCH.";
+        if (d.Defaults is { Count: > 64 }) return "Demasiados valores predeterminados.";
+        if (d.Defaults is not null)
+        {
+            foreach (var (field, value) in d.Defaults)
+            {
+                if (!Source.IsMatch(field) || value.ValueKind is JsonValueKind.Undefined ||
+                    field.Length > 160 || value.GetRawText().Length > 8192)
+                    return "Valor predeterminado inválido o demasiado largo.";
+                if (d.Inputs.Any(x => x.Internal == field ||
+                    x.Internal.StartsWith(field + ".", StringComparison.Ordinal) ||
+                    field.StartsWith(x.Internal + ".", StringComparison.Ordinal)) ||
+                    d.Defaults.Keys.Any(x => x != field && (x.StartsWith(field + ".", StringComparison.Ordinal) ||
+                        field.StartsWith(x + ".", StringComparison.Ordinal))))
+                    return "Un campo no puede ser público y predeterminado a la vez.";
+                if (dynamicRoute)
+                {
+                    if (!field.StartsWith("body.", StringComparison.Ordinal) ||
+                        !Source.IsMatch(field) || d.Inputs.Any(x => x.Internal == "body"))
+                        return "Solo se pueden fijar campos internos body.campo en rutas descubiertas.";
+                }
+                else if (!allowedInputs.Any(x => x.Internal == field))
+                    return "El campo predeterminado no pertenece al contrato aprobado.";
+            }
+        }
         if (!dynamicRoute && (d.Inputs.Any(f => !allowedInputs.Any(x => x.Public == f.Public && x.Internal == f.Internal && (!x.Required || f.Required))) ||
             d.Outputs.Any(f => !allowedOutputs.Any(x => x.Public == f.Public && x.Internal == f.Internal))))
             return "Seleccioná los campos disponibles para esta operación.";
-        if (!dynamicRoute && allowedInputs.Any(x => x.Required && !d.Inputs.Any(f => f.Public == x.Public && f.Internal == x.Internal && f.Required)))
+        if (!dynamicRoute && allowedInputs.Any(x => x.Required &&
+            !d.Inputs.Any(f => f.Public == x.Public && f.Internal == x.Internal && f.Required) &&
+            !(d.Defaults?.ContainsKey(x.Internal) ?? false)))
             return "Faltan campos obligatorios de la operación.";
         if (target.Code == "pricing-rate-request-create")
         {
             var wholePayload = d.Inputs.Any(f => f.Internal == "payload");
             var nestedPayload = d.Inputs.Any(f => f.Internal.StartsWith("payload.", StringComparison.Ordinal));
-            if (!wholePayload && !nestedPayload)
+            var defaultPayload = d.Defaults?.Keys.Any(x => x == "payload" || x.StartsWith("payload.", StringComparison.Ordinal)) == true;
+            if (!wholePayload && !nestedPayload && !defaultPayload)
                 return "Seleccioná los datos de la solicitud o el payload completo.";
-            if (wholePayload && nestedPayload)
+            if ((wholePayload || d.Defaults?.ContainsKey("payload") == true) &&
+                (nestedPayload || d.Defaults?.Keys.Any(x => x.StartsWith("payload.", StringComparison.Ordinal)) == true))
                 return "Elegí payload completo o campos individuales, no ambos.";
         }
         if (d.Outputs.Count > 256 || d.Inputs.Count > 256 || (target.Method == "GET" && d.Outputs.Count < 1))

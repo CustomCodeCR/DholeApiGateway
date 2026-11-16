@@ -91,11 +91,20 @@ public static class ThirdPartyApiEndpoints
             Authorized(ctx) ? Results.Ok(ThirdPartyRouteDiscovery.Services(gateway.Value)) : Results.Forbid());
 
         admin.MapGet("/discover/{service}", async (HttpContext ctx, string service, IConfiguration cfg,
-            IOptions<GatewayOptions> gateway, IHttpClientFactory clients) =>
+            IOptions<GatewayOptions> gateway, IHttpClientFactory clients, ITokenService issuer) =>
         {
             if (!Authorized(ctx)) return Results.Forbid();
+            // Use a fresh, narrowly-scoped machine identity for this metadata-only
+            // operation. Never forward the administrator's user session downstream.
+            var catalogToken = issuer.CreateToken(new TokenRequest
+            {
+                UserId = "31b0f3f4-9187-4667-b85c-b871ce6399ab",
+                UserName = "dhole-route-discovery",
+                UserType = "service",
+                Scopes = ["integrations.thirdparty.manage"],
+            });
             return Results.Ok(await ThirdPartyRouteDiscovery.DiscoverAsync(
-                service, cfg, gateway.Value, clients, ctx.Request.Headers.Authorization.ToString(), ctx.RequestAborted));
+                service, cfg, gateway.Value, clients, "Bearer " + catalogToken, ctx.RequestAborted));
         });
 
         admin.MapPost("/resolve", (HttpContext ctx, IConfiguration cfg, IOptions<GatewayOptions> gateway,

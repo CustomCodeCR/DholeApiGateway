@@ -2,7 +2,7 @@
 
 - MINOR DH-20261116-API-MANAGER-165: contratos POST/PUT/PATCH soportan valores predeterminados del lado del servidor, restringidos a campos aprobados y bloqueados para el consumidor externo; contratos antiguos mantienen compatibilidad JSONB.
 - Reconoce campos obligatorios cubiertos por defaults y preserva controles de API Key, cuotas, identidad técnica e idempotencia.
-- El explorador muestra las rutas aprobadas aun cuando falle la consulta del inventario interno, en lugar de presentar silenciosamente una lista incompleta.
+- El explorador consulta el inventario completo de los microservicios usando un JWT técnico temporal con scope exclusivo `integrations.thirdparty.manage`, sin exponer ni reenviar el JWT de usuario. Ante fallos muestra las rutas aprobadas y diagnostica el problema, sin presentar una lista vacía.
 
 ## [1.9.1] - 2026-11-16 (API Manager: identidad técnica limitada para catálogos Config)
 

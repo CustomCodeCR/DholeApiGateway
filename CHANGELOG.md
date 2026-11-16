@@ -1,3 +1,9 @@
+## [1.10.0] - 2026-11-16 (API Manager: rutas completas y valores fijos seguros)
+
+- MINOR DH-20261116-API-ROUTES-DEFAULTS-165: recibe de develop el contrato de valores fijos por ruta (Defaults) para POST/PUT/PATCH, guardado en Gateway e inaccesible para el consumidor. El cliente y ejecutivo de CRM pueden fijarse sin usar una identidad global.
+- Descubrimiento usa un JWT técnico limitado a integrations.thirdparty.manage; los catálogos runtime de servicios reemplazan la dependencia de Swagger. Rutas dinámicas admiten mapeo de body.
+- Mantiene validación de API Keys, permisos, vinculación y límites. Se incluyen pruebas de defaults, y metadatos/versiones del release 1.63.0.
+
 ## [1.10.0] - 2026-11-16 (API Manager: valores predeterminados protegidos)
 
 - MINOR DH-20261116-API-MANAGER-165: contratos POST/PUT/PATCH soportan valores predeterminados del lado del servidor, restringidos a campos aprobados y bloqueados para el consumidor externo; contratos antiguos mantienen compatibilidad JSONB.

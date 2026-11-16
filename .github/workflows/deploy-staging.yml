@@ -32,8 +32,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          rm -rf .dhole-system
-          git clone --depth 1 --branch develop https://github.com/CustomCodeCR/DholeSystem.git .dhole-system
+          bash scripts/checkout-dhole-system.sh develop
           mkdir -p "$RUNNER_TEMP/dhole-env"
           bash .dhole-system/deploy/prepare-environments.sh /opt/dhole/.env "$RUNNER_TEMP/dhole-env"
           echo "DHOLE_ENV_FILE=$RUNNER_TEMP/dhole-env/.env.staging" >> "$GITHUB_ENV"

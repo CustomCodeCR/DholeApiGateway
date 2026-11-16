@@ -2,9 +2,9 @@
   "schemaVersion": 1,
   "ecosystem": "Dhole",
   "component": "DholeApiGateway",
-  "version": "1.10.2",
-  "ecosystemVersion": "1.63.2",
-  "releaseId": "DH-20261116-API-PRICING-IDENTITY-167",
+  "version": "1.10.3",
+  "ecosystemVersion": "1.63.3",
+  "releaseId": "DH-20261116-GATEWAY-DEPLOY-DNS-168",
   "releaseStatus": "candidate-ci-and-staging-pending",
-  "businessReleaseId": "DH-20261116-API-PRICING-IDENTITY-167"
+  "businessReleaseId": "DH-20261116-GATEWAY-DEPLOY-DNS-168"
 }

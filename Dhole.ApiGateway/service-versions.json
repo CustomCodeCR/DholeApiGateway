@@ -1,14 +1,14 @@
 {
   "schemaVersion": 1,
   "ecosystem": "Dhole",
-  "ecosystemVersion": "1.63.2",
-  "releaseId": "DH-20261116-API-PRICING-IDENTITY-167",
-  "source": "api-manager-pricing-rate-request-limited-identity",
+  "ecosystemVersion": "1.63.3",
+  "releaseId": "DH-20261116-GATEWAY-DEPLOY-DNS-168",
+  "source": "gateway-system-checkout-bounded-retry-dns",
   "services": [
     {
       "key": "gateway",
       "component": "DholeApiGateway",
-      "version": "1.10.2",
+      "version": "1.10.3",
       "repository": "CustomCodeCR/DholeApiGateway"
     },
     {
@@ -98,7 +98,7 @@
     {
       "key": "system",
       "component": "DholeSystem",
-      "version": "1.63.2",
+      "version": "1.63.3",
       "repository": "CustomCodeCR/DholeSystem"
     }
   ]

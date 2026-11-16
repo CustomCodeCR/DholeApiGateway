@@ -1,6 +1,7 @@
 using CustomCodeFramework.Auth.Abstractions;
 using Dhole.ApiGateway.ThirdParty;
 using Microsoft.Extensions.Configuration;
+using System.Text.Json;
 using Xunit;
 
 namespace Dhole.ApiGateway.Realtime.Tests;
@@ -65,6 +66,52 @@ public sealed class ThirdPartyServiceIdentityTests
             new Dictionary<string, string?> { ["ThirdParty:ServiceTokens:config-catalog-pol"] = "configured-credential" }).Build();
         Assert.True(ThirdPartyServiceIdentity.IsReady(target, withExplicit));
         Assert.Equal("configured-credential", ThirdPartyServiceIdentity.GetCredential(target, withExplicit, new InspectingIssuer()));
+    }
+
+    private static ApprovedTarget PricingRequestTarget() =>
+        new("pricing-rate-request-create", "pricing", "POST", "/api/pricing/rate-requests/", "Create request");
+
+    [Fact]
+    public void Rate_request_is_ready_only_for_the_exact_approved_post_and_uses_minimal_scope()
+    {
+        var issuer = new InspectingIssuer();
+        var target = PricingRequestTarget();
+        Assert.True(ThirdPartyServiceIdentity.IsReady(target, ValidConfig()));
+        var endpoint = new PublishedEndpoint(Guid.NewGuid(), "Website", "solicitar-tarifa", target.Code,
+            [], [], null, true, new Dictionary<string, JsonElement>());
+        Assert.Equal("restricted-token", ThirdPartyServiceIdentity.GetCredential(target, ValidConfig(), issuer, endpoint));
+        var request = Assert.IsType<TokenRequest>(issuer.LastRequest);
+        Assert.Equal("service", request.UserType);
+        Assert.Equal("pricing.rate-request.create", Assert.Single(request.Scopes));
+        Assert.Equal("7c1d5bdc-80e2-4bc9-9ec4-f65ec114ed70", request.UserId);
+        Assert.Equal("pricing-rate-request-create", request.ExtraClaims!["integration_target"]);
+        Assert.Equal("7c1d5bdc-80e2-4bc9-9ec4-f65ec114ed70", request.ExtraClaims["integration_seller_user_id"]);
+        Assert.Empty(request.Permissions);
+        Assert.Empty(request.Roles);
+        Assert.Null(request.SessionId);
+        Assert.False(ThirdPartyServiceIdentity.IsReady(target with { Path = "/api/pricing/rates/" }, ValidConfig()));
+        Assert.False(ThirdPartyServiceIdentity.IsReady(target with { Method = "PUT" }, ValidConfig()));
+        Assert.False(ThirdPartyServiceIdentity.IsReady(target with { Code = "route.pricing.post.example" }, ValidConfig()));
+    }
+
+    [Fact]
+    public void Rate_request_seller_is_taken_only_from_locked_server_default()
+    {
+        var target = PricingRequestTarget();
+        var seller = Guid.NewGuid();
+        var issuer = new InspectingIssuer();
+        var endpoint = new PublishedEndpoint(Guid.NewGuid(), "Website", "solicitar-tarifa", target.Code,
+            [], [], null, true, new Dictionary<string, JsonElement>
+            { ["sellerUserId"] = JsonSerializer.SerializeToElement(seller.ToString()) });
+        Assert.Equal("restricted-token", ThirdPartyServiceIdentity.GetCredential(target, ValidConfig(), issuer, endpoint));
+        Assert.Equal(seller.ToString(), issuer.LastRequest!.ExtraClaims!["integration_seller_user_id"]);
+        Assert.Null(ThirdPartyServiceIdentity.GetCredential(target, ValidConfig(), new InspectingIssuer(),
+            endpoint with { Inputs = [new PublishedField("seller", "sellerUserId", true)] }));
+        Assert.Null(ThirdPartyServiceIdentity.GetCredential(target, ValidConfig(), new InspectingIssuer(),
+            endpoint with { Defaults = new Dictionary<string, JsonElement>
+                { ["sellerUserId"] = JsonSerializer.SerializeToElement("invalid") } }));
+        Assert.Null(ThirdPartyServiceIdentity.GetCredential(target, ValidConfig(), new InspectingIssuer()));
+        Assert.False(ThirdPartyServiceIdentity.IsReady(target, new ConfigurationBuilder().Build()));
     }
 
     private sealed class InspectingIssuer : ITokenService

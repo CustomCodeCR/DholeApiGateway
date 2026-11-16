@@ -1,3 +1,9 @@
+## [1.10.2] - 2026-11-16 (Identidad técnica para Solicitar tarifa)
+
+- PATCH DH-20261116-API-PRICING-IDENTITY-167: Gateway emite JWT efímero con scope exclusivo `pricing.rate-request.create` para el POST aprobado `pricing-rate-request-create`, sin token manual ni flags.
+- El vendedor real procede de `defaults.sellerUserId` fijado en servidor; no se permite vendedor enviado por el consumidor. Sin vendedor fijo se usa actor técnico institucional Castro Fallas.
+- Se mantienen API Key, idempotencia, validación de scopes, auditoría y exclusión de rutas arbitrarias.
+
 ## [1.10.1] - 2026-11-16 (API Manager: vendedor institucional Castro Fallas)
 
 - PATCH DH-20261116-API-CRM-166: `sellerUserId` deja de ser obligatorio en el contrato externo de solicitud de tarifas. Pricing utiliza el usuario autenticado de la identidad técnica si no se especifica, sin impersonación ni elevación.

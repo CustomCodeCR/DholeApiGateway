@@ -138,7 +138,11 @@ public static class ThirdPartyFieldCatalog
             new("poeName", "poeName", "POE nombre", false, false) { Type = "texto", Group = "Solicitud" },
             new("podId", "podId", "POD ID", false, false) { Type = "UUID", Group = "Solicitud" },
             new("podName", "podName", "POD nombre", false, false) { Type = "texto", Group = "Solicitud" },
-            new("sellerUserId", "sellerUserId", "Vendedor (ID)", true, false) { Type = "UUID", Group = "Solicitud" },
+            // Optional: Pricing uses the authenticated technical actor when no Auth seller
+            // is supplied (institutional commercial executive Castro Fallas).
+            // Concrete CRM sellers remain locked by the contract and are checked
+            // against Pricing's delegated-seller authorization.
+            new("sellerUserId", "sellerUserId", "Vendedor (ID)", false, false) { Type = "UUID", Group = "Solicitud" },
             new("payload", "payload", "Datos de operación (JSON)", true, false) { Type = "JSON", Group = "Solicitud" },
         ],
         "pricing-rate-delete" =>

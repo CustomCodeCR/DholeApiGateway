@@ -10,7 +10,16 @@ manifest = json.loads((root / "Dhole.ApiGateway/service-versions.json").read_tex
 assert manifest["releaseId"] == version["releaseId"]
 assert manifest["ecosystemVersion"] == version["ecosystemVersion"]
 assert next(s for s in manifest["services"] if s["key"] == "gateway")["version"] == version["version"]
-assert len(manifest["services"]) >= 14
+assert len(manifest["services"]) >= 17
+assert next(s for s in manifest["services"] if s["key"] == "operations")["component"] == "DholeOperationsService"
+gateway_settings = json.loads((root / "Dhole.ApiGateway/appsettings.json").read_text())
+routes = gateway_settings["Gateway"]["Routes"]
+assert any(r["Prefix"] == "/api/operations" and r["Destination"].endswith("operations-api:8080") and not r.get("StripPrefix", False) for r in routes)
+assert any(r["Prefix"] == "/hubs/operations" and r["Destination"].endswith("operations-api:8080") and not r.get("StripPrefix", False) for r in routes)
+assert gateway_settings["Gateway"]["HealthChecks"]["operations"].endswith("operations-api:8080")
+program = (root / "Dhole.ApiGateway/Program.cs").read_text()
+assert 'service.Equals("operations", StringComparison.OrdinalIgnoreCase)' in program
+assert '"/ready"' in program
 assert len({s["key"] for s in manifest["services"]}) == len(manifest["services"])
 assert all(re.fullmatch(r"[0-9]+[.][0-9]+[.][0-9]+", s["version"]) for s in manifest["services"])
 assert 'app.MapGet("/api/system/versions"' in (root / "Dhole.ApiGateway/Program.cs").read_text()

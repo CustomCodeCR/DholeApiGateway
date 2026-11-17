@@ -1,14 +1,14 @@
 {
   "schemaVersion": 1,
   "ecosystem": "Dhole",
-  "ecosystemVersion": "1.63.3",
-  "releaseId": "DH-20261116-GATEWAY-DEPLOY-DNS-168",
-  "source": "gateway-system-checkout-bounded-retry-dns",
+  "ecosystemVersion": "1.68.0",
+  "releaseId": "DH-20261117-OPS-GATEWAY-DB-184",
+  "source": "dhole-system-manifest-dh-184",
   "services": [
     {
       "key": "gateway",
       "component": "DholeApiGateway",
-      "version": "1.10.3",
+      "version": "1.11.0",
       "repository": "CustomCodeCR/DholeApiGateway"
     },
     {
@@ -22,6 +22,12 @@
       "component": "DholeCRMService",
       "version": "1.32.0",
       "repository": "CustomCodeCR/DholeCRMService"
+    },
+    {
+      "key": "operations",
+      "component": "DholeOperationsService",
+      "version": "0.3.1",
+      "repository": "CustomCodeCR/DholeOperationsService"
     },
     {
       "key": "config",
@@ -92,13 +98,13 @@
     {
       "key": "web",
       "component": "DholeWeb",
-      "version": "1.62.1",
+      "version": "1.66.0",
       "repository": "CustomCodeCR/DholeWeb"
     },
     {
       "key": "system",
       "component": "DholeSystem",
-      "version": "1.63.3",
+      "version": "1.68.0",
       "repository": "CustomCodeCR/DholeSystem"
     }
   ]

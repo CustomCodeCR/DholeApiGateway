@@ -63,6 +63,27 @@ if (!string.IsNullOrWhiteSpace(crmHttpUrl))
     );
 }
 
+// Operations REST and per-case SignalR share the same authenticated upstream.
+// Indexes 15/16 align with DholeSystem (13/14 reserved for Dynamics).
+var operationsHttpUrl = builder.Configuration["OPERATIONS_HTTP_URL"]?.Trim().TrimEnd('/');
+if (!string.IsNullOrWhiteSpace(operationsHttpUrl))
+{
+    builder.Configuration.AddInMemoryCollection(
+        new Dictionary<string, string?>
+        {
+            ["Gateway:Routes:15:Prefix"] = "/api/operations",
+            ["Gateway:Routes:15:Destination"] = operationsHttpUrl,
+            ["Gateway:Routes:15:StripPrefix"] = "false",
+            ["Gateway:Routes:15:TimeoutSeconds"] = "120",
+            ["Gateway:Routes:16:Prefix"] = "/hubs/operations",
+            ["Gateway:Routes:16:Destination"] = operationsHttpUrl,
+            ["Gateway:Routes:16:StripPrefix"] = "false",
+            ["Gateway:Routes:16:TimeoutSeconds"] = "120",
+            ["Gateway:HealthChecks:operations"] = operationsHttpUrl,
+        }
+    );
+}
+
 const string CorsPolicyName = "DholeWebCors";
 
 builder.Services.AddCustomCodeApiWithSwagger(title: "Dhole Api Gateway", version: "v1");
@@ -337,11 +358,13 @@ app.MapGet(
                 return;
             }
 
-            // CRM publishes liveness and dependency readiness on distinct endpoints.
-            // Monitoring must validate readiness; a generic /health would produce a false 404.
+            // CRM and Operations have dedicated dependency-readiness endpoints.
+            // Operations /ready verifies PostgreSQL and Redis.
             var healthPath = service.Equals("crm", StringComparison.OrdinalIgnoreCase)
                 ? "/health/ready"
-                : "/health";
+                : service.Equals("operations", StringComparison.OrdinalIgnoreCase)
+                    ? "/ready"
+                    : "/health";
             var healthUrl = $"{destination.Value.TrimEnd('/')}{healthPath}";
             var logger = loggerFactory.CreateLogger("GatewayHealthCheck");
             using var timeout = CancellationTokenSource.CreateLinkedTokenSource(context.RequestAborted);

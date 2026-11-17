@@ -1,3 +1,10 @@
+## [1.11.0] - 2026-11-17 (DH-184 · Operations Gateway + health)
+
+- MINOR: enruta `/api/operations/*` y el Hub SignalR `/hubs/operations` conservando la ruta y el JWT.
+- `GET /api/health/operations` consulta `/ready` (PostgreSQL + Redis), no un health superficial.
+- Registra DholeOperationsService 0.3.1 en `/api/system/versions`; CI valida rutas, Hub, health y registro único.
+- DholeApiGateway 1.10.3 → 1.11.0; versión global 1.68.0.
+
 ## [1.10.3] - 2026-11-16 (DholeSystem checkout resiliente en deploy)
 
 - PATCH DH-20261116-GATEWAY-DEPLOY-DNS-168: ambos workflows de Gateway usan un helper compartido para clonar la infraestructura de la rama correspondiente con hasta cuatro intentos y esperas acotadas ante fallos transitorios de DNS o red.

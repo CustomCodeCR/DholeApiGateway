@@ -167,7 +167,9 @@ builder.Services.AddCors(options =>
                 .WithOrigins(allowedOrigins.ToArray())
                 .AllowAnyHeader()
                 .AllowAnyMethod()
-                .AllowCredentials();
+                .AllowCredentials()
+                // Browsers may reuse successful preflights for cross-origin JWT requests.
+                .SetPreflightMaxAge(TimeSpan.FromHours(1));
         }
     );
 });

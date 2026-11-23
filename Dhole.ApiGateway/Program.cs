@@ -166,7 +166,9 @@ builder.Services.AddCors(options =>
                 .WithOrigins(allowedOrigins.ToArray())
                 .AllowAnyHeader()
                 .AllowAnyMethod()
-                .AllowCredentials();
+                .AllowCredentials()
+                // Cache successful cross-origin preflights. Same-origin SPA requests need none.
+                .SetPreflightMaxAge(TimeSpan.FromHours(1));
         }
     );
 });

@@ -1,14 +1,14 @@
 {
   "schemaVersion": 1,
   "ecosystem": "Dhole",
-  "ecosystemVersion": "1.68.0",
-  "releaseId": "DH-20261117-OPS-GATEWAY-DB-184",
-  "source": "dhole-system-manifest-dh-184",
+  "ecosystemVersion": "1.120.3",
+  "releaseId": "DH-20261123-CORS-PREFLIGHT-419",
+  "source": "gateway-coordinated-release-dh-419",
   "services": [
     {
       "key": "gateway",
       "component": "DholeApiGateway",
-      "version": "1.11.0",
+      "version": "1.11.1",
       "repository": "CustomCodeCR/DholeApiGateway"
     },
     {

@@ -1,3 +1,10 @@
+## [1.11.1] - 2026-11-23 (DH-419 · CORS preflight caching)
+
+- PATCH: agrega SetPreflightMaxAge(TimeSpan.FromHours(1)) a la política CORS actual para reducir solicitudes OPTIONS repetitivas en clientes que continúan consumiendo el origen cruzado.
+- Mantiene orígenes permitidos, credenciales, autenticación JWT, rutas REST, WebSocket/SignalR, controles de acceso y reintentos existentes; no cambia la exposición de endpoints.
+- Coordinado con DholeWeb 1.120.3: proxy de mismo origen para APIs oficiales y caché de catálogos; versión global 1.120.3. Otros microservicios permanecen sin cambios.
+- Requiere CI, compilación .NET 10, tests y staging antes de promoción a producción.
+
 ## [1.11.0] - 2026-11-17 (DH-184 · Operations Gateway + health)
 
 - MINOR: enruta `/api/operations/*` y el Hub SignalR `/hubs/operations` conservando la ruta y el token JWT hasta Operations.

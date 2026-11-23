@@ -1,3 +1,9 @@
+## [1.11.1] - 2026-11-23 (DH-419 · CORS preflight caching)
+
+- PATCH: configura Access-Control-Max-Age de una hora en la política CORS existente de DholeApiGateway, conservando orígenes permitidos, JWT, credentials, rutas REST y SignalR.
+- Navegadores pueden reutilizar preflights compatibles según sus límites propios; no se eliminan todos los OPTIONS ni se altera la autorización.
+- DholeApiGateway 1.11.0 → 1.11.1; demás componentes sin cambio en este repositorio. CI y staging pendientes antes de integrar.
+
 ## [1.11.0] - 2026-11-17 (DH-184 · Operations Gateway + health)
 
 - MINOR: enruta `/api/operations/*` y el Hub SignalR `/hubs/operations` conservando la ruta y el token JWT hasta Operations.
